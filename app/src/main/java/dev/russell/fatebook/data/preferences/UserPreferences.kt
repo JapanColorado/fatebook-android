@@ -1,0 +1,88 @@
+package dev.russell.fatebook.data.preferences
+
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
+
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+
+@Singleton
+class UserPreferences @Inject constructor(
+    @ApplicationContext private val context: Context,
+) {
+    private val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+
+    private val encryptedPrefs: SharedPreferences =
+        EncryptedSharedPreferences.create(
+            context,
+            "fatebook_secure_prefs",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+
+    // --- API Key (encrypted) ---
+
+    var apiKey: String?
+        get() = encryptedPrefs.getString(KEY_API_KEY, null)
+        set(value) = encryptedPrefs.edit().putString(KEY_API_KEY, value).apply()
+
+    val hasApiKey: Boolean
+        get() = !apiKey.isNullOrBlank()
+
+    // --- Notification settings (DataStore) ---
+
+    val notificationsEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[NOTIFICATIONS_ENABLED] ?: false }
+
+    val reminderHour: Flow<Int> =
+        context.dataStore.data.map { it[REMINDER_HOUR] ?: 9 }
+
+    val reminderMinute: Flow<Int> =
+        context.dataStore.data.map { it[REMINDER_MINUTE] ?: 0 }
+
+    val lastPredictionDateEpochMs: Flow<Long> =
+        context.dataStore.data.map { it[LAST_PREDICTION_DATE] ?: 0L }
+
+    suspend fun setNotificationsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[NOTIFICATIONS_ENABLED] = enabled }
+    }
+
+    suspend fun setReminderTime(hour: Int, minute: Int) {
+        context.dataStore.edit {
+            it[REMINDER_HOUR] = hour
+            it[REMINDER_MINUTE] = minute
+        }
+    }
+
+    suspend fun setLastPredictionDate(epochMs: Long) {
+        context.dataStore.edit { it[LAST_PREDICTION_DATE] = epochMs }
+    }
+
+    fun clearAll() {
+        encryptedPrefs.edit().clear().apply()
+    }
+
+    companion object {
+        private const val KEY_API_KEY = "api_key"
+        private val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
+        private val REMINDER_HOUR = intPreferencesKey("reminder_hour")
+        private val REMINDER_MINUTE = intPreferencesKey("reminder_minute")
+        private val LAST_PREDICTION_DATE = longPreferencesKey("last_prediction_date")
+    }
+}

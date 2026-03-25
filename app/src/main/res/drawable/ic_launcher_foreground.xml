@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Trending up icon centered in adaptive icon safe zone -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,72l18,-18.03 12,12L84,37.15l-4.24,-4.24 -21.26,23.91 -12,-12L24,67.97z"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"/>
+</vector>

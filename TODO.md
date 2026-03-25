@@ -1,0 +1,53 @@
+# TODO
+
+## General
+
+- [ ] Resolved should be sorted new→old
+
+## Known Bugs
+
+- [ ] Multi-option predictions aren't working
+- [ ] Prediction cards aren't clickable (only ready-to-resolve ones open the resolve sheet)
+- [ ] Can't make new forecasts on existing questions
+- [ ] Resolve sheet doesn't work
+- [ ] Predictions have too many decimals (60% → 60.0930823920110—float problem?)
+
+## Polish (v1.x)
+
+- [ ] Error handling — network errors show retry banner instead of just snackbar
+- [ ] Loading skeleton states while feed is refreshing
+- [ ] Pagination — currently loads first 100 questions only (use `cursor` from API)
+- [ ] Update forecast on existing question (tap question → update probability)
+- [ ] Search/filter questions by text
+- [ ] Handle `hideForecastsUntil` — don't show forecast value until date passes
+- [ ] Surface errors from resolve/create to user (currently silently caught)
+- [ ] Notification permission request flow on Android 13+
+- [ ] App icon — replace placeholder with proper design
+
+## v0.2 — Analytics
+
+- [ ] Calibration chart — bucket resolved predictions by forecast probability, compare predicted vs. actual rates
+- [ ] Streak tracker — current streak of consecutive days with >=1 prediction
+- [ ] Activity trends — predictions per week/month over time
+- [ ] Brier score history — score trend over time
+- [ ] Analytics screen accessible from feed (new nav destination)
+
+## Future Ideas
+
+- [ ] Tags/categories for organizing predictions by domain
+- [ ] Quick-forecast templates (pre-filled question patterns for recurring prediction types)
+- [ ] Home screen widget for quick-create
+- [ ] Fatebook tournament support
+- [ ] Add comments to questions
+- [ ] Edit question title/resolveBy/notes
+- [ ] Delete questions
+- [ ] Share questions publicly / toggle visibility
+- [ ] Deep link support (open fatebook.io question URLs in app)
+
+## Technical Debt
+
+- [ ] Replace Moshi Kapt with pure KSP (currently triggers deprecation warning from Hilt's Kapt)
+- [ ] Add unit tests for QuestionRepository and ViewModels
+- [ ] Add UI tests for critical flows (create, resolve)
+- [ ] ProGuard/R8 optimization for release builds
+- [ ] CI pipeline (GitHub Actions)

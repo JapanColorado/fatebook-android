@@ -1,0 +1,19 @@
+[workspace]
+name = "fatebook-android"
+version = "0.1.0"
+description = "Fatebook prediction-tracking Android app"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+gradle = ">=9.3"
+openjdk = ">=21,<22"
+
+[tasks]
+build = { cmd = "./gradlew assembleDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+install = "/home/russell/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk"
+deploy = { depends-on = ["build", "install"] }
+run = "/home/russell/Android/Sdk/platform-tools/adb shell am start -n dev.russell.fatebook/.MainActivity"
+clean = { cmd = "./gradlew clean", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+test = { cmd = "./gradlew test", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+lint = { cmd = "./gradlew lintDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }

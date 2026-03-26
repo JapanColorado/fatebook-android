@@ -2,15 +2,16 @@
 
 ## General
 
-- [ ] Resolved should be sorted new→old
+- [x] Resolved should be sorted new→old
+- [ ] How to do automated testing with Claude?
 
 ## Known Bugs
 
 - [ ] Multi-option predictions aren't working
-- [ ] Prediction cards aren't clickable (only ready-to-resolve ones open the resolve sheet)
+- [x] Prediction cards aren't clickable (only ready-to-resolve ones open the resolve sheet)
 - [ ] Can't make new forecasts on existing questions
-- [ ] Resolve sheet doesn't work
-- [ ] Predictions have too many decimals (60% → 60.0930823920110—float problem?)
+- [x] Resolve sheet doesn't work
+- [x] Predictions have too many decimals (60% → 60.0930823920110—float problem?)
 
 ## Polish (v1.x)
 
@@ -18,9 +19,9 @@
 - [ ] Loading skeleton states while feed is refreshing
 - [ ] Pagination — currently loads first 100 questions only (use `cursor` from API)
 - [ ] Update forecast on existing question (tap question → update probability)
-- [ ] Search/filter questions by text
+- [x] Search/filter questions by text
 - [ ] Handle `hideForecastsUntil` — don't show forecast value until date passes
-- [ ] Surface errors from resolve/create to user (currently silently caught)
+- [x] Surface errors from resolve/create to user (currently silently caught)
 - [ ] Notification permission request flow on Android 13+
 - [ ] App icon — replace placeholder with proper design
 

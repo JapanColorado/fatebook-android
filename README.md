@@ -5,8 +5,9 @@ An unofficial Android client for [Fatebook](https://fatebook.io), the prediction
 ## Features
 
 - **Quick create** — title, resolve date, probability slider with quick-set chips
-- **Question feed** — filterable list (active / ready to resolve / resolved) with pull-to-refresh
-- **Resolve flow** — bottom sheet with YES / NO / Ambiguous buttons
+- **Question feed** — filterable list (active / ready to resolve / resolved) with pull-to-refresh and text search
+- **Resolve flow** — bottom sheet with YES / NO / Ambiguous buttons and loading state
+- **Question detail** — tap any card to see details, forecast date, resolution, and link to fatebook.io
 - **Smart daily reminder** — notification fires only if you haven't made a prediction today
 - **Offline-first** — cached questions show immediately, syncs in background
 - **Material You** — dynamic color theming on Android 12+

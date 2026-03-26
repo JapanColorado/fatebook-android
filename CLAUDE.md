@@ -38,7 +38,7 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 ## Key API Quirks
 
 - `createQuestion` is a **GET** request (not POST) — returns plain-text URL, not JSON
-- `apiKey` is a **query parameter**, not an Authorization header (handled by `ApiKeyInterceptor`)
+- `apiKey` is a **query parameter** for GET requests (handled by `ApiKeyInterceptor`), but must be an explicit **`@Field`** in POST request bodies (`resolveQuestion`, `addForecast`)
 - API dates default to midnight UTC — `QuestionRepository.parseInstant()` handles both ISO 8601 and YYYY-MM-DD
 - Scalars converter must be registered before Moshi in Retrofit (see `NetworkModule`)
 
@@ -53,9 +53,10 @@ dev.russell.fatebook/
 ├── domain/model/        # Question, Resolution
 ├── ui/theme/            # Material3 theme, colors, typography
 ├── ui/components/       # QuestionCard, ProbabilitySlider, DatePickerField
-├── ui/feed/             # Feed screen + ViewModel
+├── ui/feed/             # Feed screen + ViewModel (owns resolve + detail sheet state)
 ├── ui/create/           # Create prediction screen + ViewModel
 ├── ui/resolve/          # Resolve bottom sheet
+├── ui/detail/           # Question detail bottom sheet
 ├── ui/settings/         # Settings screen + ViewModel
 ├── notification/        # WorkManager reminder (ReminderWorker, Scheduler, Helper)
 ├── navigation/          # Routes, NavGraph
@@ -65,9 +66,10 @@ dev.russell.fatebook/
 ## v1 — What's Implemented
 
 - **Settings screen**: API key input (obscured), validation against real API, "Get key" link, notification time picker
-- **Question feed**: LazyColumn with filter chips (Active / Ready to Resolve / Resolved), pull-to-refresh, empty states
+- **Question feed**: LazyColumn with filter chips (Active / Ready to Resolve / Resolved), pull-to-refresh, search bar, empty states
 - **Quick create**: Title field (auto-capitalized), date picker (default: tomorrow), probability slider with quick-set chips (10/25/50/75/90%)
-- **Resolve flow**: Bottom sheet with YES (green) / NO (red) / Ambiguous buttons, shows question title + forecast
+- **Resolve flow**: Bottom sheet with YES (green) / NO (red) / Ambiguous buttons, loading indicator, error surfacing via snackbar. Resolve state lives in `FeedViewModel`.
+- **Question detail**: Tapping non-resolvable cards opens a detail bottom sheet (title, dates, forecast, resolution, "Open in Fatebook" link)
 - **Smart notification**: WorkManager daily task, only fires if no prediction made today
 - **Offline-first**: Room cache shows questions immediately, background API refresh
 - **Material You**: Dynamic color theming on Android 12+, dark mode support

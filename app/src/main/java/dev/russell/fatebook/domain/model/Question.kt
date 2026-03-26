@@ -11,6 +11,7 @@ data class Question(
     val resolution: Resolution?,
     val resolved: Boolean,
     val yourLatestForecast: Double?,
+    val latestForecastAt: Instant?,
     val forecasts: List<Forecast>,
     val url: String,
 ) {

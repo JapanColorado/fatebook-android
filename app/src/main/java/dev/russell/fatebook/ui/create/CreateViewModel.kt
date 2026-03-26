@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import kotlin.math.roundToInt
 import javax.inject.Inject
 
 data class CreateUiState(
@@ -53,7 +54,7 @@ class CreateViewModel @Inject constructor(
                 repository.createQuestion(
                     title = current.title.trim(),
                     resolveBy = current.resolveBy,
-                    forecast = current.forecast.toDouble(),
+                    forecast = (current.forecast * 100).roundToInt() / 100.0,
                 )
                 _state.value = _state.value.copy(isSubmitting = false, success = true)
             } catch (e: Exception) {

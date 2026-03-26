@@ -22,7 +22,8 @@ object DatabaseModule {
             context,
             FatebookDatabase::class.java,
             "fatebook.db",
-        ).build()
+        ).fallbackToDestructiveMigration()
+            .build()
 
     @Provides
     fun provideQuestionDao(database: FatebookDatabase): QuestionDao =

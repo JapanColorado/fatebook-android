@@ -12,6 +12,7 @@ data class QuestionEntity(
     val resolution: String?, // YES / NO / AMBIGUOUS / null
     val resolved: Boolean,
     val latestForecast: Double?,
+    val latestForecastAtEpochMs: Long?,
     val url: String,
     val lastSyncedEpochMs: Long = System.currentTimeMillis(),
 )

@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -30,6 +32,7 @@ import dev.russell.fatebook.ui.theme.ResolveYes
 @Composable
 fun ResolveBottomSheet(
     question: Question,
+    isLoading: Boolean,
     onResolve: (Resolution) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -76,6 +79,7 @@ fun ResolveBottomSheet(
                 Button(
                     onClick = { onResolve(Resolution.YES) },
                     modifier = Modifier.weight(1f),
+                    enabled = !isLoading,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = ResolveYes,
                     ),
@@ -86,6 +90,7 @@ fun ResolveBottomSheet(
                 Button(
                     onClick = { onResolve(Resolution.NO) },
                     modifier = Modifier.weight(1f),
+                    enabled = !isLoading,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = ResolveNo,
                     ),
@@ -99,8 +104,14 @@ fun ResolveBottomSheet(
             OutlinedButton(
                 onClick = { onResolve(Resolution.AMBIGUOUS) },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading,
             ) {
                 Text("Ambiguous")
+            }
+
+            if (isLoading) {
+                Spacer(modifier = Modifier.height(12.dp))
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
             }
 
             Spacer(modifier = Modifier.height(16.dp))

@@ -27,22 +27,28 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.ui.components.QuestionCard
+import dev.russell.fatebook.ui.detail.QuestionDetailSheet
+import dev.russell.fatebook.ui.resolve.ResolveBottomSheet
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.OutlinedTextField
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FeedScreen(
     onCreateClick: () -> Unit,
-    onQuestionClick: (Question) -> Unit,
     onSettingsClick: () -> Unit,
     viewModel: FeedViewModel = hiltViewModel(),
 ) {
@@ -76,6 +82,33 @@ fun FeedScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            // Search bar — local state avoids StateFlow round-trip lag
+            var searchText by remember { mutableStateOf("") }
+            OutlinedTextField(
+                value = searchText,
+                onValueChange = {
+                    searchText = it
+                    viewModel.setSearchQuery(it)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                placeholder = { Text("Search predictions...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchText.isNotEmpty()) {
+                        IconButton(onClick = {
+                            searchText = ""
+                            viewModel.setSearchQuery("")
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+            )
+
             // Filter chips
             FlowRow(
                 modifier = Modifier
@@ -111,10 +144,14 @@ fun FeedScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = when (state.filter) {
-                                FeedFilter.ACTIVE -> "No active predictions"
-                                FeedFilter.READY_TO_RESOLVE -> "Nothing to resolve"
-                                FeedFilter.RESOLVED -> "No resolved predictions yet"
+                            text = if (searchText.isNotBlank()) {
+                                "No predictions matching \"${searchText}\""
+                            } else {
+                                when (state.filter) {
+                                    FeedFilter.ACTIVE -> "No active predictions"
+                                    FeedFilter.READY_TO_RESOLVE -> "Nothing to resolve"
+                                    FeedFilter.RESOLVED -> "No resolved predictions yet"
+                                }
                             },
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -128,12 +165,36 @@ fun FeedScreen(
                         items(state.questions, key = { it.id }) { question ->
                             QuestionCard(
                                 question = question,
-                                onClick = { onQuestionClick(question) },
+                                onClick = {
+                                    if (question.isReadyToResolve) {
+                                        viewModel.showResolveSheet(question)
+                                    } else {
+                                        viewModel.showDetailSheet(question)
+                                    }
+                                },
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    // Resolve bottom sheet
+    state.resolveTarget?.let { question ->
+        ResolveBottomSheet(
+            question = question,
+            isLoading = state.isResolving,
+            onResolve = { resolution -> viewModel.resolveQuestion(resolution) },
+            onDismiss = { viewModel.dismissResolveSheet() },
+        )
+    }
+
+    // Detail bottom sheet
+    state.detailTarget?.let { question ->
+        QuestionDetailSheet(
+            question = question,
+            onDismiss = { viewModel.dismissDetailSheet() },
+        )
     }
 }

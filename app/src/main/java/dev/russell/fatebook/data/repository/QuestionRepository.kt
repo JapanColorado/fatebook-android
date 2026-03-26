@@ -61,9 +61,11 @@ class QuestionRepository @Inject constructor(
     }
 
     suspend fun resolveQuestion(questionId: String, resolution: Resolution) {
+        val apiKey = prefs.apiKey ?: error("No API key configured")
         api.resolveQuestion(
             questionId = questionId,
             resolution = resolution.apiValue,
+            apiKey = apiKey,
         )
         refresh()
     }
@@ -80,10 +82,9 @@ class QuestionRepository @Inject constructor(
     // --- Mappers ---
 
     private fun QuestionDto.toEntity(): QuestionEntity {
-        val latestForecast = forecasts
+        val latest = forecasts
             ?.filter { it.forecast != null }
             ?.maxByOrNull { it.createdAt ?: "" }
-            ?.forecast
 
         return QuestionEntity(
             id = id,
@@ -92,12 +93,17 @@ class QuestionRepository @Inject constructor(
             createdAtEpochMs = parseInstant(createdAt).toEpochMilli(),
             resolution = resolution,
             resolved = resolved,
-            latestForecast = latestForecast,
+            latestForecast = latest?.forecast,
+            latestForecastAtEpochMs = latest?.createdAt?.let { parseInstant(it).toEpochMilli() },
             url = url ?: "https://fatebook.io/q/$id",
         )
     }
 
     private fun QuestionDto.toDomain(): Question {
+        val latest = forecasts
+            ?.filter { it.forecast != null }
+            ?.maxByOrNull { it.createdAt ?: "" }
+
         return Question(
             id = id,
             title = title,
@@ -105,10 +111,8 @@ class QuestionRepository @Inject constructor(
             createdAt = parseInstant(createdAt),
             resolution = resolution?.let { Resolution.fromApi(it) },
             resolved = resolved,
-            yourLatestForecast = forecasts
-                ?.filter { it.forecast != null }
-                ?.maxByOrNull { it.createdAt ?: "" }
-                ?.forecast,
+            yourLatestForecast = latest?.forecast,
+            latestForecastAt = latest?.createdAt?.let { parseInstant(it) },
             forecasts = forecasts?.map { dto ->
                 Forecast(
                     userId = dto.userId ?: "",
@@ -129,6 +133,7 @@ class QuestionRepository @Inject constructor(
             resolution = resolution?.let { Resolution.fromApi(it) },
             resolved = resolved,
             yourLatestForecast = latestForecast,
+            latestForecastAt = latestForecastAtEpochMs?.let { Instant.ofEpochMilli(it) },
             forecasts = emptyList(), // Not stored locally
             url = url,
         )

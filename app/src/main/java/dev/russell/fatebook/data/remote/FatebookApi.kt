@@ -43,6 +43,7 @@ interface FatebookApi {
     suspend fun resolveQuestion(
         @Field("questionId") questionId: String,
         @Field("resolution") resolution: String,
+        @Field("apiKey") apiKey: String,
         @Field("questionType") questionType: String = "BINARY",
     )
 
@@ -52,6 +53,7 @@ interface FatebookApi {
     suspend fun addForecast(
         @Field("questionId") questionId: String,
         @Field("forecast") forecast: Double,
+        @Field("apiKey") apiKey: String,
     )
 
     /** Validation call — fetches 1 question to confirm the API key works. */

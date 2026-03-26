@@ -59,10 +59,17 @@ fun QuestionCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = relativeDate(question.resolveBy),
+                    text = "Resolves ${relativeDate(question.resolveBy)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                question.latestForecastAt?.let { forecastAt ->
+                    Text(
+                        text = "Predicted ${timeAgo(forecastAt)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             if (question.resolved && question.resolution != null) {
@@ -90,6 +97,17 @@ fun QuestionCard(
                 }
             }
         }
+    }
+}
+
+private fun timeAgo(instant: Instant): String {
+    val ago = Duration.between(instant, Instant.now())
+    return when {
+        ago.toDays() > 30 -> instant.atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern("MMM d"))
+        ago.toDays() > 0 -> "${ago.toDays()}d ago"
+        ago.toHours() > 0 -> "${ago.toHours()}h ago"
+        else -> "just now"
     }
 }
 

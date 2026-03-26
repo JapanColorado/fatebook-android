@@ -63,12 +63,14 @@ fun QuestionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                question.latestForecastAt?.let { forecastAt ->
-                    Text(
-                        text = "Predicted ${timeAgo(forecastAt)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                if (!question.isForecastHidden) {
+                    question.latestForecastAt?.let { forecastAt ->
+                        Text(
+                            text = "Predicted ${timeAgo(forecastAt)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 
@@ -83,6 +85,14 @@ fun QuestionCard(
                     color = color,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
+            } else if (question.isForecastHidden) {
+                Text(
+                    text = "Hidden",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
                     modifier = Modifier.padding(start = 12.dp),
                 )
             } else {

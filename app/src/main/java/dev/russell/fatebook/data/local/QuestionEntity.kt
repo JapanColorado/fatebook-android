@@ -14,5 +14,6 @@ data class QuestionEntity(
     val latestForecast: Double?,
     val latestForecastAtEpochMs: Long?,
     val url: String,
+    val forecastHiddenUntilEpochMs: Long? = null,
     val lastSyncedEpochMs: Long = System.currentTimeMillis(),
 )

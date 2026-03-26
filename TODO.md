@@ -9,20 +9,20 @@
 
 - [ ] Multi-option predictions aren't working
 - [x] Prediction cards aren't clickable (only ready-to-resolve ones open the resolve sheet)
-- [ ] Can't make new forecasts on existing questions
+- [x] Can't make new forecasts on existing questions
 - [x] Resolve sheet doesn't work
 - [x] Predictions have too many decimals (60% → 60.0930823920110—float problem?)
 
 ## Polish (v1.x)
 
 - [ ] Error handling — network errors show retry banner instead of just snackbar
-- [ ] Loading skeleton states while feed is refreshing
-- [ ] Pagination — currently loads first 100 questions only (use `cursor` from API)
-- [ ] Update forecast on existing question (tap question → update probability)
+- [x] Loading skeleton states while feed is refreshing
+- [x] Pagination — currently loads first 100 questions only (use `cursor` from API)
+- [x] Update forecast on existing question (tap question → update probability)
 - [x] Search/filter questions by text
-- [ ] Handle `hideForecastsUntil` — don't show forecast value until date passes
+- [x] Handle `hideForecastsUntil` — don't show forecast value until date passes
 - [x] Surface errors from resolve/create to user (currently silently caught)
-- [ ] Notification permission request flow on Android 13+
+- [x] Notification permission request flow on Android 13+
 - [ ] App icon — replace placeholder with proper design
 
 ## v0.2 — Analytics

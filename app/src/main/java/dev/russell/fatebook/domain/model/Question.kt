@@ -14,9 +14,13 @@ data class Question(
     val latestForecastAt: Instant?,
     val forecasts: List<Forecast>,
     val url: String,
+    val forecastHiddenUntil: Instant? = null,
 ) {
     val isReadyToResolve: Boolean
         get() = !resolved && Instant.now().isAfter(resolveBy)
+
+    val isForecastHidden: Boolean
+        get() = forecastHiddenUntil != null && Instant.now().isBefore(forecastHiddenUntil)
 
     val forecastPercent: Int?
         get() = yourLatestForecast?.let { (it * 100).roundToInt() }

@@ -28,6 +28,11 @@ data class FeedUiState(
     val isResolving: Boolean = false,
     val detailTarget: Question? = null,
     val searchQuery: String = "",
+    val forecastSliderValue: Float = 0.5f,
+    val isUpdatingForecast: Boolean = false,
+    val isInitialLoad: Boolean = true,
+    val hasMore: Boolean = false,
+    val isLoadingMore: Boolean = false,
 )
 
 @HiltViewModel
@@ -42,6 +47,11 @@ class FeedViewModel @Inject constructor(
     private val _isResolving = MutableStateFlow(false)
     private val _detailTarget = MutableStateFlow<Question?>(null)
     private val _searchQuery = MutableStateFlow("")
+    private val _forecastSliderValue = MutableStateFlow(0.5f)
+    private val _isUpdatingForecast = MutableStateFlow(false)
+    private val _isInitialLoad = MutableStateFlow(true)
+    private val _hasMore = MutableStateFlow(false)
+    private val _isLoadingMore = MutableStateFlow(false)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<FeedUiState> = combine(_filter, _searchQuery) { filter, query ->
@@ -57,6 +67,7 @@ class FeedViewModel @Inject constructor(
         }
         combine(
             questionsFlow, _isRefreshing, _error, _resolveTarget, _isResolving, _detailTarget,
+            _forecastSliderValue, _isUpdatingForecast, _isInitialLoad, _hasMore, _isLoadingMore,
         ) { args ->
             @Suppress("UNCHECKED_CAST")
             FeedUiState(
@@ -68,6 +79,11 @@ class FeedViewModel @Inject constructor(
                 isResolving = args[4] as Boolean,
                 detailTarget = args[5] as Question?,
                 searchQuery = query,
+                forecastSliderValue = args[6] as Float,
+                isUpdatingForecast = args[7] as Boolean,
+                isInitialLoad = args[8] as Boolean,
+                hasMore = args[9] as Boolean,
+                isLoadingMore = args[10] as Boolean,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FeedUiState())
@@ -90,10 +106,27 @@ class FeedViewModel @Inject constructor(
             _error.value = null
             try {
                 repository.refresh()
+                _hasMore.value = repository.hasMore()
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to load questions"
             } finally {
                 _isRefreshing.value = false
+                _isInitialLoad.value = false
+            }
+        }
+    }
+
+    fun loadMore() {
+        if (_isLoadingMore.value || !_hasMore.value) return
+        viewModelScope.launch {
+            _isLoadingMore.value = true
+            try {
+                val hasMore = repository.loadMore()
+                _hasMore.value = hasMore
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to load more"
+            } finally {
+                _isLoadingMore.value = false
             }
         }
     }
@@ -102,10 +135,31 @@ class FeedViewModel @Inject constructor(
 
     fun showDetailSheet(question: Question) {
         _detailTarget.value = question
+        _forecastSliderValue.value = question.yourLatestForecast?.toFloat() ?: 0.5f
     }
 
     fun dismissDetailSheet() {
         _detailTarget.value = null
+    }
+
+    fun setForecastSliderValue(value: Float) {
+        _forecastSliderValue.value = value
+    }
+
+    fun updateForecast() {
+        val question = _detailTarget.value ?: return
+        viewModelScope.launch {
+            _isUpdatingForecast.value = true
+            _error.value = null
+            try {
+                repository.addForecast(question.id, _forecastSliderValue.value.toDouble())
+                _detailTarget.value = null // close sheet on success
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to update forecast"
+            } finally {
+                _isUpdatingForecast.value = false
+            }
+        }
     }
 
     // --- Resolve flow ---

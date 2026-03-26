@@ -23,6 +23,8 @@ class QuestionRepository @Inject constructor(
     private val dao: QuestionDao,
     private val prefs: UserPreferences,
 ) {
+    private var nextCursor: Int? = null
+
     /** Observe cached questions, mapped to domain models. */
     fun observeActive(): Flow<List<Question>> =
         dao.observeActive().map { entities -> entities.map { it.toDomain() } }
@@ -37,14 +39,27 @@ class QuestionRepository @Inject constructor(
     fun observeAll(): Flow<List<Question>> =
         dao.observeAll().map { entities -> entities.map { it.toDomain() } }
 
-    /** Fetch from API and update local cache. Returns the fetched questions. */
+    /** Fetch first page from API and replace local cache. */
     suspend fun refresh(): List<Question> {
         val response = api.getQuestions()
+        nextCursor = response.nextCursor
         val entities = response.items.map { it.toEntity() }
         dao.deleteAll()
         dao.upsertAll(entities)
         return response.items.map { it.toDomain() }
     }
+
+    /** Load the next page and append to cache. Returns true if more pages exist. */
+    suspend fun loadMore(): Boolean {
+        val cursor = nextCursor ?: return false
+        val response = api.getQuestions(cursor = cursor)
+        nextCursor = response.nextCursor
+        val entities = response.items.map { it.toEntity() }
+        dao.upsertAll(entities)
+        return response.nextCursor != null
+    }
+
+    fun hasMore(): Boolean = nextCursor != null
 
     suspend fun createQuestion(
         title: String,
@@ -58,6 +73,16 @@ class QuestionRepository @Inject constructor(
         // Refresh cache to include the new question
         refresh()
         return url
+    }
+
+    suspend fun addForecast(questionId: String, forecast: Double) {
+        val apiKey = prefs.apiKey ?: error("No API key configured")
+        api.addForecast(
+            questionId = questionId,
+            forecast = forecast,
+            apiKey = apiKey,
+        )
+        refresh()
     }
 
     suspend fun resolveQuestion(questionId: String, resolution: Resolution) {
@@ -96,6 +121,9 @@ class QuestionRepository @Inject constructor(
             latestForecast = latest?.forecast,
             latestForecastAtEpochMs = latest?.createdAt?.let { parseInstant(it).toEpochMilli() },
             url = url ?: "https://fatebook.io/q/$id",
+            forecastHiddenUntilEpochMs = latest?.hideForecastsUntil?.let {
+                try { parseInstant(it).toEpochMilli() } catch (_: Exception) { null }
+            },
         )
     }
 
@@ -121,6 +149,9 @@ class QuestionRepository @Inject constructor(
                 )
             } ?: emptyList(),
             url = url ?: "https://fatebook.io/q/$id",
+            forecastHiddenUntil = latest?.hideForecastsUntil?.let {
+                try { parseInstant(it) } catch (_: Exception) { null }
+            },
         )
     }
 
@@ -136,6 +167,7 @@ class QuestionRepository @Inject constructor(
             latestForecastAt = latestForecastAtEpochMs?.let { Instant.ofEpochMilli(it) },
             forecasts = emptyList(), // Not stored locally
             url = url,
+            forecastHiddenUntil = forecastHiddenUntilEpochMs?.let { Instant.ofEpochMilli(it) },
         )
     }
 

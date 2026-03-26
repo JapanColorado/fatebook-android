@@ -22,6 +22,7 @@ data class SettingsUiState(
     val notificationsEnabled: Boolean = false,
     val reminderHour: Int = 9,
     val reminderMinute: Int = 0,
+    val shouldRequestNotificationPermission: Boolean = false,
 )
 
 @HiltViewModel
@@ -35,6 +36,8 @@ class SettingsViewModel @Inject constructor(
     private val _isValidating = MutableStateFlow(false)
     private val _validationResult = MutableStateFlow<Boolean?>(null)
     private val _validationError = MutableStateFlow<String?>(null)
+    private val _shouldRequestPermission = MutableStateFlow(false)
+    private val _pendingNotificationEnable = MutableStateFlow(false)
 
     val state: StateFlow<SettingsUiState> = combine(
         _apiKey,
@@ -44,6 +47,7 @@ class SettingsViewModel @Inject constructor(
         prefs.notificationsEnabled,
         prefs.reminderHour,
         prefs.reminderMinute,
+        _shouldRequestPermission,
     ) { values ->
         SettingsUiState(
             apiKey = values[0] as String,
@@ -53,6 +57,7 @@ class SettingsViewModel @Inject constructor(
             notificationsEnabled = values[4] as Boolean,
             reminderHour = values[5] as Int,
             reminderMinute = values[6] as Int,
+            shouldRequestNotificationPermission = values[7] as Boolean,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -83,14 +88,26 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setNotificationsEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            prefs.setNotificationsEnabled(enabled)
-            if (enabled) {
-                reminderScheduler.schedule(state.value.reminderHour, state.value.reminderMinute)
-            } else {
+        if (enabled) {
+            _pendingNotificationEnable.value = true
+            _shouldRequestPermission.value = true
+        } else {
+            viewModelScope.launch {
+                prefs.setNotificationsEnabled(false)
                 reminderScheduler.cancel()
             }
         }
+    }
+
+    fun onNotificationPermissionResult(granted: Boolean) {
+        _shouldRequestPermission.value = false
+        if (granted && _pendingNotificationEnable.value) {
+            viewModelScope.launch {
+                prefs.setNotificationsEnabled(true)
+                reminderScheduler.schedule(state.value.reminderHour, state.value.reminderMinute)
+            }
+        }
+        _pendingNotificationEnable.value = false
     }
 
     fun setReminderTime(hour: Int, minute: Int) {

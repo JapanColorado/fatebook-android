@@ -7,11 +7,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -26,6 +29,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.russell.fatebook.ui.components.QuestionCard
+import dev.russell.fatebook.ui.components.ShimmerQuestionCardList
 import dev.russell.fatebook.ui.detail.QuestionDetailSheet
 import dev.russell.fatebook.ui.resolve.ResolveBottomSheet
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -138,7 +143,9 @@ fun FeedScreen(
                 onRefresh = viewModel::refresh,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (state.questions.isEmpty() && !state.isRefreshing) {
+                if (state.isInitialLoad) {
+                    ShimmerQuestionCardList()
+                } else if (state.questions.isEmpty() && !state.isRefreshing) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
@@ -158,7 +165,23 @@ fun FeedScreen(
                         )
                     }
                 } else {
+                    val listState = rememberLazyListState()
+
+                    val shouldLoadMore by remember {
+                        derivedStateOf {
+                            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            val totalItems = listState.layoutInfo.totalItemsCount
+                            lastVisible >= totalItems - 3
+                        }
+                    }
+                    LaunchedEffect(shouldLoadMore) {
+                        if (shouldLoadMore && state.hasMore) {
+                            viewModel.loadMore()
+                        }
+                    }
+
                     LazyColumn(
+                        state = listState,
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -173,6 +196,18 @@ fun FeedScreen(
                                     }
                                 },
                             )
+                        }
+                        if (state.isLoadingMore) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                }
+                            }
                         }
                     }
                 }
@@ -194,6 +229,10 @@ fun FeedScreen(
     state.detailTarget?.let { question ->
         QuestionDetailSheet(
             question = question,
+            forecastSliderValue = state.forecastSliderValue,
+            isUpdatingForecast = state.isUpdatingForecast,
+            onForecastSliderChange = viewModel::setForecastSliderValue,
+            onUpdateForecast = viewModel::updateForecast,
             onDismiss = { viewModel.dismissDetailSheet() },
         )
     }

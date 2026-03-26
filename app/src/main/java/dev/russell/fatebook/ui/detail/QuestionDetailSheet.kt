@@ -20,7 +20,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import dev.russell.fatebook.domain.model.Question
+import dev.russell.fatebook.ui.components.ProbabilitySlider
 import dev.russell.fatebook.ui.theme.ResolveAmbiguous
 import dev.russell.fatebook.ui.theme.ResolveNo
 import dev.russell.fatebook.ui.theme.ResolveYes
@@ -32,6 +35,10 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun QuestionDetailSheet(
     question: Question,
+    forecastSliderValue: Float,
+    isUpdatingForecast: Boolean,
+    onForecastSliderChange: (Float) -> Unit,
+    onUpdateForecast: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -67,14 +74,27 @@ fun QuestionDetailSheet(
             )
 
             // Forecast
-            question.forecastPercent?.let { pct ->
+            if (question.isForecastHidden) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Your forecast: $pct%",
-                    color = forecastColor(pct / 100.0),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
+                    text = "Forecast hidden until ${
+                        question.forecastHiddenUntil!!
+                            .atZone(ZoneId.systemDefault())
+                            .format(dateFormatter)
+                    }",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            } else {
+                question.forecastPercent?.let { pct ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Your forecast: $pct%",
+                        color = forecastColor(pct / 100.0),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                    )
+                }
             }
 
             // Resolution (if resolved)
@@ -91,6 +111,33 @@ fun QuestionDetailSheet(
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                 )
+            }
+
+            // Update forecast (active, non-hidden questions only)
+            if (!question.resolved && !question.isForecastHidden) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                ProbabilitySlider(
+                    value = forecastSliderValue,
+                    onValueChange = onForecastSliderChange,
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                    onClick = onUpdateForecast,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isUpdatingForecast,
+                ) {
+                    if (isUpdatingForecast) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.height(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text("Update Forecast")
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))

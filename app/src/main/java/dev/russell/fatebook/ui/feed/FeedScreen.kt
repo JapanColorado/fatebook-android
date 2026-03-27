@@ -22,8 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -39,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.russell.fatebook.ui.components.ErrorBanner
 import dev.russell.fatebook.ui.components.QuestionCard
 import dev.russell.fatebook.ui.components.ShimmerQuestionCardList
 import dev.russell.fatebook.ui.detail.QuestionDetailSheet
@@ -79,6 +78,7 @@ fun FeedScreen(
         onForecastSliderChange = viewModel::setForecastSliderValue,
         onUpdateForecast = viewModel::updateForecast,
         onDismissDetailSheet = viewModel::dismissDetailSheet,
+        onDismissError = viewModel::dismissError,
     )
 }
 
@@ -98,13 +98,8 @@ fun FeedScreenContent(
     onForecastSliderChange: (Float) -> Unit = {},
     onUpdateForecast: () -> Unit = {},
     onDismissDetailSheet: () -> Unit = {},
+    onDismissError: () -> Unit = {},
 ) {
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    LaunchedEffect(state.error) {
-        state.error?.let { snackbarHostState.showSnackbar(it) }
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -121,7 +116,6 @@ fun FeedScreenContent(
                 Icon(Icons.Default.Add, contentDescription = "New prediction")
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -177,6 +171,14 @@ fun FeedScreenContent(
                         },
                     )
                 }
+            }
+
+            if (state.error != null) {
+                ErrorBanner(
+                    message = state.error.message,
+                    onRetry = onRefresh,
+                    onDismiss = onDismissError,
+                )
             }
 
             PullToRefreshBox(

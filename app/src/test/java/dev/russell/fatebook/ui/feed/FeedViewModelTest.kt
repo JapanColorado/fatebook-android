@@ -106,8 +106,8 @@ class FeedViewModelTest {
     }
 
     @Test
-    fun `refresh sets error on failure`() = runTest {
-        coEvery { repository.refresh() } throws RuntimeException("Network error")
+    fun `refresh sets Other error on RuntimeException`() = runTest {
+        coEvery { repository.refresh() } throws RuntimeException("Server error")
 
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -115,7 +115,24 @@ class FeedViewModelTest {
         }
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.error).isEqualTo("Network error")
+        val error = vm.uiState.value.error
+        assertThat(error).isInstanceOf(FeedError.Other::class.java)
+        assertThat(error?.message).isEqualTo("Server error")
+    }
+
+    @Test
+    fun `refresh sets Network error on IOException`() = runTest {
+        coEvery { repository.refresh() } throws java.io.IOException("No internet")
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        val error = vm.uiState.value.error
+        assertThat(error).isInstanceOf(FeedError.Network::class.java)
+        assertThat(error?.message).isEqualTo("No internet")
     }
 
     @Test
@@ -251,7 +268,9 @@ class FeedViewModelTest {
         vm.updateForecast()
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.error).isEqualTo("Forbidden")
+        val error = vm.uiState.value.error
+        assertThat(error).isInstanceOf(FeedError.Other::class.java)
+        assertThat(error?.message).isEqualTo("Forbidden")
     }
 
     @Test
@@ -287,6 +306,26 @@ class FeedViewModelTest {
         vm.resolveQuestion(Resolution.NO)
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.error).isEqualTo("Failed")
+        val error = vm.uiState.value.error
+        assertThat(error).isInstanceOf(FeedError.Other::class.java)
+        assertThat(error?.message).isEqualTo("Failed")
+    }
+
+    @Test
+    fun `dismissError clears the error`() = runTest {
+        coEvery { repository.refresh() } throws RuntimeException("Error")
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.error).isNotNull()
+
+        vm.dismissError()
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.error).isNull()
     }
 }

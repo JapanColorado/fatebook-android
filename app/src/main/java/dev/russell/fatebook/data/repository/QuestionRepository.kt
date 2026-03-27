@@ -25,6 +25,9 @@ class QuestionRepository @Inject constructor(
 ) {
     private var nextCursor: Int? = null
 
+    private val QuestionDto.isBinary: Boolean
+        get() = questionType == null || questionType == "BINARY"
+
     /** Observe cached questions, mapped to domain models. */
     fun observeActive(): Flow<List<Question>> =
         dao.observeActive().map { entities -> entities.map { it.toDomain() } }
@@ -43,10 +46,11 @@ class QuestionRepository @Inject constructor(
     suspend fun refresh(): List<Question> {
         val response = api.getQuestions()
         nextCursor = response.nextCursor
-        val entities = response.items.map { it.toEntity() }
+        val binaryOnly = response.items.filter { it.isBinary }
+        val entities = binaryOnly.map { it.toEntity() }
         dao.deleteAll()
         dao.upsertAll(entities)
-        return response.items.map { it.toDomain() }
+        return binaryOnly.map { it.toDomain() }
     }
 
     /** Load the next page and append to cache. Returns true if more pages exist. */
@@ -54,7 +58,8 @@ class QuestionRepository @Inject constructor(
         val cursor = nextCursor ?: return false
         val response = api.getQuestions(cursor = cursor)
         nextCursor = response.nextCursor
-        val entities = response.items.map { it.toEntity() }
+        val binaryOnly = response.items.filter { it.isBinary }
+        val entities = binaryOnly.map { it.toEntity() }
         dao.upsertAll(entities)
         return response.nextCursor != null
     }

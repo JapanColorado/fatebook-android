@@ -131,6 +131,49 @@ class QuestionRepositoryTest {
         assertThat(repository.hasMore()).isFalse()
     }
 
+    // --- questionType filtering ---
+
+    @Test
+    fun `refresh filters out multi-option questions`() = runTest {
+        val binary = TestData.questionDto(id = "q1", questionType = "BINARY")
+        val multi = TestData.questionDto(id = "q2", questionType = "MULTI_OPTION")
+        val binary2 = TestData.questionDto(id = "q3", questionType = "BINARY")
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(binary, multi, binary2)) }
+
+        val result = repository.refresh()
+
+        assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q3")
+        assertThat(result.map { it.id }).containsExactly("q1", "q3")
+    }
+
+    @Test
+    fun `refresh treats null questionType as binary`() = runTest {
+        val nullType = TestData.questionDto(id = "q1", questionType = null)
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(nullType)) }
+
+        val result = repository.refresh()
+
+        assertThat(dao.storedQuestions).hasSize(1)
+        assertThat(result).hasSize(1)
+        assertThat(result[0].id).isEqualTo("q1")
+    }
+
+    @Test
+    fun `loadMore filters out multi-option questions`() = runTest {
+        val page1 = TestData.questionDto(id = "q1", questionType = "BINARY")
+        val page2Binary = TestData.questionDto(id = "q2", questionType = "BINARY")
+        val page2Multi = TestData.questionDto(id = "q3", questionType = "MULTI_OPTION")
+        api.getQuestionsResponse = { cursor ->
+            if (cursor == null) TestData.questionsResponse(items = listOf(page1), nextCursor = 2)
+            else TestData.questionsResponse(items = listOf(page2Binary, page2Multi))
+        }
+        repository.refresh()
+
+        repository.loadMore()
+
+        assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2")
+    }
+
     // --- createQuestion ---
 
     @Test

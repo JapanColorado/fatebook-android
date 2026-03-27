@@ -8,11 +8,15 @@ Package: `dev.russell.fatebook`
 All commands go through pixi (which provides the JDK — the system only has a JRE):
 
 ```bash
-pixi run build    # ./gradlew assembleDebug
-pixi run deploy   # build + adb install
-pixi run clean    # ./gradlew clean
-pixi run test     # ./gradlew test
-pixi run lint     # ./gradlew lintDebug
+pixi run build                  # ./gradlew assembleDebug
+pixi run deploy                 # build + adb install
+pixi run clean                  # ./gradlew clean
+pixi run test                   # ./gradlew test (all JVM tests)
+pixi run test-unit              # ./gradlew testDebugUnitTest
+pixi run test-screenshot-record # ./gradlew recordPaparazziDebug (regenerate goldens)
+pixi run test-screenshot-verify # ./gradlew verifyPaparazziDebug (compare vs goldens)
+pixi run test-all               # unit tests + screenshot verify
+pixi run lint                   # ./gradlew lintDebug
 ```
 
 Do NOT run `./gradlew` directly — it will fail because the system JDK is incomplete. Always use `pixi run`.
@@ -42,6 +46,21 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 - API dates default to midnight UTC — `QuestionRepository.parseInstant()` handles both ISO 8601 and YYYY-MM-DD
 - Scalars converter must be registered before Moshi in Retrofit (see `NetworkModule`)
 
+## Testing
+
+**Unit tests** (JUnit + MockK + Turbine + Truth): Cover domain models, `QuestionRepository`, all ViewModels, and `ApiKeyInterceptor`. Run on JVM, no emulator needed.
+
+**Screenshot tests** (Paparazzi): Render Compose UI to PNG on JVM using Android Studio's layoutlib. Golden images committed to `app/src/test/snapshots/images/`. Claude can read these PNGs to visually inspect the UI without a device.
+
+**Screen composable pattern**: Each screen has a connected wrapper (calls `hiltViewModel()`) and a stateless `*Content` composable (takes state + callbacks). The `*Content` versions are what Paparazzi renders. Example: `FeedScreen` → `FeedScreenContent`.
+
+**CI**: `.github/workflows/ci.yml` runs three parallel jobs on every PR: lint, unit tests, screenshot verification.
+
+**Test fakes** (in `app/src/test/.../testutil/`):
+- `FakeFatebookApi` — implements `FatebookApi` interface, records calls
+- `FakeQuestionDao` — in-memory DAO using `MutableStateFlow`
+- `UserPreferences` is mocked with MockK (concrete class with Android deps)
+
 ## Package Structure
 
 ```
@@ -50,14 +69,14 @@ dev.russell.fatebook/
 ├── data/local/          # Room database, DAO, entity
 ├── data/preferences/    # EncryptedSharedPrefs + DataStore
 ├── data/repository/     # QuestionRepository (offline-first)
-├── domain/model/        # Question, Resolution
+├── domain/model/        # Question, Forecast, Resolution
 ├── ui/theme/            # Material3 theme, colors, typography
 ├── ui/components/       # QuestionCard, ProbabilitySlider, DatePickerField, ShimmerQuestionCard
-├── ui/feed/             # Feed screen + ViewModel (owns resolve + detail sheet state)
-├── ui/create/           # Create prediction screen + ViewModel
+├── ui/feed/             # FeedScreen + FeedScreenContent + FeedViewModel
+├── ui/create/           # CreateScreen + CreateScreenContent + CreateViewModel
 ├── ui/resolve/          # Resolve bottom sheet
 ├── ui/detail/           # Question detail bottom sheet
-├── ui/settings/         # Settings screen + ViewModel
+├── ui/settings/         # SettingsScreen + SettingsScreenContent + SettingsViewModel
 ├── notification/        # WorkManager reminder (ReminderWorker, Scheduler, Helper)
 ├── navigation/          # Routes, NavGraph
 └── di/                  # Hilt modules (Network, Database, Repository)

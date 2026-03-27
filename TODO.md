@@ -3,11 +3,13 @@
 ## General
 
 - [x] Resolved should be sorted new→old
-- [ ] How to do automated testing with Claude?
+- [x] How to do automated testing with Claude?
+- [ ] Last prediction date should be right justified, in line with resolve date
 
 ## Known Bugs
 
-- [ ] Multi-option predictions aren't working
+- [ ] Multi-option predictions aren't working (filter out or major redesign?)
+- [ ] Notifications aren't working
 - [x] Prediction cards aren't clickable (only ready-to-resolve ones open the resolve sheet)
 - [x] Can't make new forecasts on existing questions
 - [x] Resolve sheet doesn't work
@@ -44,11 +46,12 @@
 - [ ] Delete questions
 - [ ] Share questions publicly / toggle visibility
 - [ ] Deep link support (open fatebook.io question URLs in app)
+- [ ] Github Claude Code?
 
 ## Technical Debt
 
 - [ ] Replace Moshi Kapt with pure KSP (currently triggers deprecation warning from Hilt's Kapt)
-- [ ] Add unit tests for QuestionRepository and ViewModels
-- [ ] Add UI tests for critical flows (create, resolve)
+- [x] Add unit tests for QuestionRepository and ViewModels
+- [x] Add UI tests for critical flows (create, resolve)
 - [ ] ProGuard/R8 optimization for release builds
-- [ ] CI pipeline (GitHub Actions)
+- [x] CI pipeline (GitHub Actions)

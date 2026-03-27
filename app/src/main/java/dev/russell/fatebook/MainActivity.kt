@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import dagger.hilt.android.AndroidEntryPoint
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.navigation.FatebookNavGraph
+import dev.russell.fatebook.notification.NotificationHelper
 import dev.russell.fatebook.ui.theme.FatebookTheme
 import javax.inject.Inject
 
@@ -19,9 +20,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val openCreate = intent.getBooleanExtra(NotificationHelper.EXTRA_OPEN_CREATE, false)
         setContent {
             FatebookTheme {
-                FatebookNavGraph(userPreferences = userPreferences)
+                FatebookNavGraph(
+                    userPreferences = userPreferences,
+                    openCreate = openCreate,
+                )
             }
         }
     }

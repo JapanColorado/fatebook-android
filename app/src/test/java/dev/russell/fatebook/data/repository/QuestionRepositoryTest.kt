@@ -205,6 +205,13 @@ class QuestionRepositoryTest {
     }
 
     @Test
+    fun `addForecast sets lastPredictionDate`() = runTest {
+        repository.addForecast("q1", 0.8)
+
+        coVerify { prefs.setLastPredictionDate(any()) }
+    }
+
+    @Test
     fun `addForecast calls API with correct params and refreshes`() = runTest {
         repository.addForecast("q1", 0.8)
 

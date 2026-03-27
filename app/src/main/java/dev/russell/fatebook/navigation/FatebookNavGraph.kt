@@ -1,6 +1,7 @@
 package dev.russell.fatebook.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -12,9 +13,16 @@ import dev.russell.fatebook.ui.settings.SettingsScreen
 @Composable
 fun FatebookNavGraph(
     userPreferences: UserPreferences,
+    openCreate: Boolean = false,
 ) {
     val navController = rememberNavController()
     val startDestination = if (userPreferences.hasApiKey) Routes.FEED else Routes.SETTINGS
+
+    LaunchedEffect(openCreate) {
+        if (openCreate && startDestination == Routes.FEED) {
+            navController.navigate(Routes.CREATE)
+        }
+    }
 
     NavHost(navController = navController, startDestination = startDestination) {
         composable(Routes.FEED) {

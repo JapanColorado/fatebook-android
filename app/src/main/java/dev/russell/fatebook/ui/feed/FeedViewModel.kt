@@ -15,15 +15,22 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.IOException
 import javax.inject.Inject
 
 enum class FeedFilter { ACTIVE, READY_TO_RESOLVE, RESOLVED }
+
+sealed interface FeedError {
+    val message: String
+    data class Network(override val message: String) : FeedError
+    data class Other(override val message: String) : FeedError
+}
 
 data class FeedUiState(
     val questions: List<Question> = emptyList(),
     val filter: FeedFilter = FeedFilter.ACTIVE,
     val isRefreshing: Boolean = false,
-    val error: String? = null,
+    val error: FeedError? = null,
     val resolveTarget: Question? = null,
     val isResolving: Boolean = false,
     val detailTarget: Question? = null,
@@ -42,7 +49,7 @@ class FeedViewModel @Inject constructor(
 
     private val _filter = MutableStateFlow(FeedFilter.ACTIVE)
     private val _isRefreshing = MutableStateFlow(false)
-    private val _error = MutableStateFlow<String?>(null)
+    private val _error = MutableStateFlow<FeedError?>(null)
     private val _resolveTarget = MutableStateFlow<Question?>(null)
     private val _isResolving = MutableStateFlow(false)
     private val _detailTarget = MutableStateFlow<Question?>(null)
@@ -74,7 +81,7 @@ class FeedViewModel @Inject constructor(
                 questions = args[0] as List<Question>,
                 filter = filter,
                 isRefreshing = args[1] as Boolean,
-                error = args[2] as String?,
+                error = args[2] as FeedError?,
                 resolveTarget = args[3] as Question?,
                 isResolving = args[4] as Boolean,
                 detailTarget = args[5] as Question?,
@@ -108,7 +115,7 @@ class FeedViewModel @Inject constructor(
                 repository.refresh()
                 _hasMore.value = repository.hasMore()
             } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to load questions"
+                _error.value = classifyError(e, "Failed to load questions")
             } finally {
                 _isRefreshing.value = false
                 _isInitialLoad.value = false
@@ -124,7 +131,7 @@ class FeedViewModel @Inject constructor(
                 val hasMore = repository.loadMore()
                 _hasMore.value = hasMore
             } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to load more"
+                _error.value = classifyError(e, "Failed to load more")
             } finally {
                 _isLoadingMore.value = false
             }
@@ -155,7 +162,7 @@ class FeedViewModel @Inject constructor(
                 repository.addForecast(question.id, _forecastSliderValue.value.toDouble())
                 _detailTarget.value = null // close sheet on success
             } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to update forecast"
+                _error.value = classifyError(e, "Failed to update forecast")
             } finally {
                 _isUpdatingForecast.value = false
             }
@@ -181,10 +188,22 @@ class FeedViewModel @Inject constructor(
                 repository.resolveQuestion(question.id, resolution)
                 _resolveTarget.value = null // close sheet on success
             } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to resolve question"
+                _error.value = classifyError(e, "Failed to resolve question")
             } finally {
                 _isResolving.value = false
             }
+        }
+    }
+
+    fun dismissError() {
+        _error.value = null
+    }
+
+    private fun classifyError(e: Exception, fallback: String): FeedError {
+        val message = e.message ?: fallback
+        return when (e) {
+            is IOException -> FeedError.Network(message)
+            else -> FeedError.Other(message)
         }
     }
 }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -22,8 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -39,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.russell.fatebook.ui.components.ErrorBanner
 import dev.russell.fatebook.ui.components.QuestionCard
 import dev.russell.fatebook.ui.components.ShimmerQuestionCardList
 import dev.russell.fatebook.ui.detail.QuestionDetailSheet
@@ -55,6 +55,7 @@ import androidx.compose.material3.OutlinedTextField
 fun FeedScreen(
     onCreateClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onAnalyticsClick: () -> Unit,
     viewModel: FeedViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -63,6 +64,7 @@ fun FeedScreen(
         state = state,
         onCreateClick = onCreateClick,
         onSettingsClick = onSettingsClick,
+        onAnalyticsClick = onAnalyticsClick,
         onFilterSelected = viewModel::setFilter,
         onSearchQueryChanged = viewModel::setSearchQuery,
         onRefresh = viewModel::refresh,
@@ -79,6 +81,7 @@ fun FeedScreen(
         onForecastSliderChange = viewModel::setForecastSliderValue,
         onUpdateForecast = viewModel::updateForecast,
         onDismissDetailSheet = viewModel::dismissDetailSheet,
+        onDismissError = viewModel::dismissError,
     )
 }
 
@@ -88,6 +91,7 @@ fun FeedScreenContent(
     state: FeedUiState,
     onCreateClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onAnalyticsClick: () -> Unit = {},
     onFilterSelected: (FeedFilter) -> Unit = {},
     onSearchQueryChanged: (String) -> Unit = {},
     onRefresh: () -> Unit = {},
@@ -98,18 +102,16 @@ fun FeedScreenContent(
     onForecastSliderChange: (Float) -> Unit = {},
     onUpdateForecast: () -> Unit = {},
     onDismissDetailSheet: () -> Unit = {},
+    onDismissError: () -> Unit = {},
 ) {
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    LaunchedEffect(state.error) {
-        state.error?.let { snackbarHostState.showSnackbar(it) }
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Fatebook") },
                 actions = {
+                    IconButton(onClick = onAnalyticsClick) {
+                        Icon(Icons.Default.BarChart, contentDescription = "Analytics")
+                    }
                     IconButton(onClick = onSettingsClick) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
@@ -121,7 +123,6 @@ fun FeedScreenContent(
                 Icon(Icons.Default.Add, contentDescription = "New prediction")
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -177,6 +178,14 @@ fun FeedScreenContent(
                         },
                     )
                 }
+            }
+
+            if (state.error != null) {
+                ErrorBanner(
+                    message = state.error.message,
+                    onRetry = onRefresh,
+                    onDismiss = onDismissError,
+                )
             }
 
             PullToRefreshBox(

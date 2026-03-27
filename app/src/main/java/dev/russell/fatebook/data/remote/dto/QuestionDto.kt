@@ -20,7 +20,7 @@ data class QuestionDto(
     val url: String?,
     val forecasts: List<ForecastDto>?,
     val notes: String?,
-    val questionType: String? = null,
+    @Json(name = "type") val questionType: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

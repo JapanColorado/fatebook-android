@@ -58,57 +58,54 @@ fun QuestionCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = "Resolves ${relativeDate(question.resolveBy)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (!question.isForecastHidden) {
-                        question.latestForecastAt?.let { forecastAt ->
-                            Text(
-                                text = "Predicted ${timeAgo(forecastAt)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = "Resolves ${relativeDate(question.resolveBy)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
-            if (question.resolved && question.resolution != null) {
-                val (text, color) = when (question.resolution.apiValue) {
-                    "YES" -> "YES" to ResolveYes
-                    "NO" -> "NO" to ResolveNo
-                    else -> "N/A" to ResolveAmbiguous
-                }
-                Text(
-                    text = text,
-                    color = color,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    modifier = Modifier.padding(start = 12.dp),
-                )
-            } else if (question.isForecastHidden) {
-                Text(
-                    text = "Hidden",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(start = 12.dp),
-                )
-            } else {
-                question.forecastPercent?.let { pct ->
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.padding(start = 12.dp),
+            ) {
+                if (question.resolved && question.resolution != null) {
+                    val (text, color) = when (question.resolution.apiValue) {
+                        "YES" -> "YES" to ResolveYes
+                        "NO" -> "NO" to ResolveNo
+                        else -> "N/A" to ResolveAmbiguous
+                    }
                     Text(
-                        text = "$pct%",
-                        color = forecastColor(pct / 100.0),
+                        text = text,
+                        color = color,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        modifier = Modifier.padding(start = 12.dp),
+                        fontSize = 16.sp,
                     )
+                } else if (question.isForecastHidden) {
+                    Text(
+                        text = "Hidden",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                    )
+                } else {
+                    question.forecastPercent?.let { pct ->
+                        Text(
+                            text = "$pct%",
+                            color = forecastColor(pct / 100.0),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                        )
+                    }
+                }
+                if (!question.isForecastHidden) {
+                    question.latestForecastAt?.let { forecastAt ->
+                        Text(
+                            text = "Predicted ${timeAgo(forecastAt)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }

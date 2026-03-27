@@ -82,6 +82,8 @@ class QuestionRepository @Inject constructor(
             forecast = forecast,
             apiKey = apiKey,
         )
+        // Record that user made a prediction today
+        prefs.setLastPredictionDate(System.currentTimeMillis())
         refresh()
     }
 

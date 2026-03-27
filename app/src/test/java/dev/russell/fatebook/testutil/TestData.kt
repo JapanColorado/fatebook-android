@@ -54,6 +54,7 @@ object TestData {
             )
         ),
         notes: String? = null,
+        questionType: String? = "BINARY",
     ) = QuestionDto(
         id = id,
         title = title,
@@ -64,6 +65,7 @@ object TestData {
         url = url,
         forecasts = forecasts,
         notes = notes,
+        questionType = questionType,
     )
 
     fun questionEntity(

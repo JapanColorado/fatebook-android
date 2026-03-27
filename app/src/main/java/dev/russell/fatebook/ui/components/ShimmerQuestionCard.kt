@@ -82,22 +82,26 @@ fun ShimmerQuestionCard(modifier: Modifier = Modifier) {
                         .clip(placeholderShape)
                         .background(brush),
                 )
-                // "Resolves..." placeholder
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.4f)
-                        .height(14.dp)
-                        .clip(placeholderShape)
-                        .background(brush),
-                )
-                // "Predicted..." placeholder
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.3f)
-                        .height(14.dp)
-                        .clip(placeholderShape)
-                        .background(brush),
-                )
+                // "Resolves..." and "Predicted..." placeholders on one line
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(100.dp)
+                            .height(14.dp)
+                            .clip(placeholderShape)
+                            .background(brush),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(80.dp)
+                            .height(14.dp)
+                            .clip(placeholderShape)
+                            .background(brush),
+                    )
+                }
             }
 
             // Percentage badge placeholder

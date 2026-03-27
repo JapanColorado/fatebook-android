@@ -4,6 +4,7 @@ import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
+import dev.russell.fatebook.ui.feed.FeedError
 import dev.russell.fatebook.ui.feed.FeedFilter
 import dev.russell.fatebook.ui.feed.FeedScreenContent
 import dev.russell.fatebook.ui.feed.FeedUiState
@@ -157,6 +158,21 @@ class FeedScreenScreenshotTest {
                             ),
                         ),
                         filter = FeedFilter.ACTIVE,
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun feedScreen_networkError() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                FeedScreenContent(
+                    state = FeedUiState(
+                        isInitialLoad = false,
+                        questions = emptyList(),
+                        error = FeedError.Network("Unable to connect. Check your internet connection."),
                     ),
                 )
             }

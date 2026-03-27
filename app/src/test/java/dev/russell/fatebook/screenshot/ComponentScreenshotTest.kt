@@ -4,6 +4,7 @@ import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
+import dev.russell.fatebook.ui.components.ErrorBanner
 import dev.russell.fatebook.ui.components.ProbabilitySlider
 import dev.russell.fatebook.ui.components.QuestionCard
 import dev.russell.fatebook.ui.components.ShimmerQuestionCard
@@ -219,6 +220,34 @@ class ComponentScreenshotTest {
         paparazzi.snapshot {
             FatebookTheme(dynamicColor = false) {
                 ShimmerQuestionCard()
+            }
+        }
+    }
+
+    // --- ErrorBanner ---
+
+    @Test
+    fun errorBanner_networkError() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                ErrorBanner(
+                    message = "Unable to connect. Check your internet connection.",
+                    onRetry = {},
+                    onDismiss = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun errorBanner_dark() {
+        paparazzi.snapshot {
+            FatebookTheme(darkTheme = true, dynamicColor = false) {
+                ErrorBanner(
+                    message = "Unable to connect. Check your internet connection.",
+                    onRetry = {},
+                    onDismiss = {},
+                )
             }
         }
     }

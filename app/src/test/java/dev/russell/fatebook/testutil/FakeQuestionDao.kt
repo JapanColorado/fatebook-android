@@ -1,0 +1,55 @@
+package dev.russell.fatebook.testutil
+
+import dev.russell.fatebook.data.local.QuestionDao
+import dev.russell.fatebook.data.local.QuestionEntity
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
+
+class FakeQuestionDao : QuestionDao {
+
+    private val _questions = MutableStateFlow<List<QuestionEntity>>(emptyList())
+
+    val storedQuestions: List<QuestionEntity>
+        get() = _questions.value
+
+    var deleteAllCallCount = 0
+        private set
+
+    override fun observeAll(): Flow<List<QuestionEntity>> =
+        _questions.map { it.sortedBy { q -> q.resolveByEpochMs } }
+
+    override fun observeActive(): Flow<List<QuestionEntity>> =
+        _questions.map { list ->
+            list.filter { !it.resolved }.sortedBy { it.resolveByEpochMs }
+        }
+
+    override fun observeReadyToResolve(nowEpochMs: Long): Flow<List<QuestionEntity>> =
+        _questions.map { list ->
+            list.filter { !it.resolved && it.resolveByEpochMs <= nowEpochMs }
+                .sortedBy { it.resolveByEpochMs }
+        }
+
+    override fun observeResolved(): Flow<List<QuestionEntity>> =
+        _questions.map { list ->
+            list.filter { it.resolved }.sortedByDescending { it.resolveByEpochMs }
+        }
+
+    override suspend fun upsertAll(questions: List<QuestionEntity>) {
+        val current = _questions.value.toMutableList()
+        for (q in questions) {
+            current.removeAll { it.id == q.id }
+            current.add(q)
+        }
+        _questions.value = current
+    }
+
+    override suspend fun deleteAll() {
+        deleteAllCallCount++
+        _questions.value = emptyList()
+    }
+
+    override suspend fun deleteById(questionId: String) {
+        _questions.value = _questions.value.filter { it.id != questionId }
+    }
+}

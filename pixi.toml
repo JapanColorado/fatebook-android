@@ -16,4 +16,8 @@ deploy = { depends-on = ["build", "install"] }
 run = "/home/russell/Android/Sdk/platform-tools/adb shell am start -n dev.russell.fatebook/.MainActivity"
 clean = { cmd = "./gradlew clean", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
 test = { cmd = "./gradlew test", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+test-unit = { cmd = "./gradlew testDebugUnitTest", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+test-screenshot-record = { cmd = "./gradlew recordPaparazziDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+test-screenshot-verify = { cmd = "./gradlew verifyPaparazziDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+test-all = { cmd = "./gradlew testDebugUnitTest verifyPaparazziDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
 lint = { cmd = "./gradlew lintDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }

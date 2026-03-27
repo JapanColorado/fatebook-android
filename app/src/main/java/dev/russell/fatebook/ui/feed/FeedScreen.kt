@@ -58,6 +58,47 @@ fun FeedScreen(
     viewModel: FeedViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    FeedScreenContent(
+        state = state,
+        onCreateClick = onCreateClick,
+        onSettingsClick = onSettingsClick,
+        onFilterSelected = viewModel::setFilter,
+        onSearchQueryChanged = viewModel::setSearchQuery,
+        onRefresh = viewModel::refresh,
+        onLoadMore = viewModel::loadMore,
+        onQuestionClick = { question ->
+            if (question.isReadyToResolve) {
+                viewModel.showResolveSheet(question)
+            } else {
+                viewModel.showDetailSheet(question)
+            }
+        },
+        onResolve = viewModel::resolveQuestion,
+        onDismissResolveSheet = viewModel::dismissResolveSheet,
+        onForecastSliderChange = viewModel::setForecastSliderValue,
+        onUpdateForecast = viewModel::updateForecast,
+        onDismissDetailSheet = viewModel::dismissDetailSheet,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun FeedScreenContent(
+    state: FeedUiState,
+    onCreateClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
+    onFilterSelected: (FeedFilter) -> Unit = {},
+    onSearchQueryChanged: (String) -> Unit = {},
+    onRefresh: () -> Unit = {},
+    onLoadMore: () -> Unit = {},
+    onQuestionClick: (dev.russell.fatebook.domain.model.Question) -> Unit = {},
+    onResolve: (dev.russell.fatebook.domain.model.Resolution) -> Unit = {},
+    onDismissResolveSheet: () -> Unit = {},
+    onForecastSliderChange: (Float) -> Unit = {},
+    onUpdateForecast: () -> Unit = {},
+    onDismissDetailSheet: () -> Unit = {},
+) {
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(state.error) {
@@ -88,12 +129,12 @@ fun FeedScreen(
                 .padding(padding),
         ) {
             // Search bar — local state avoids StateFlow round-trip lag
-            var searchText by remember { mutableStateOf("") }
+            var searchText by remember { mutableStateOf(state.searchQuery) }
             OutlinedTextField(
                 value = searchText,
                 onValueChange = {
                     searchText = it
-                    viewModel.setSearchQuery(it)
+                    onSearchQueryChanged(it)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -104,7 +145,7 @@ fun FeedScreen(
                     if (searchText.isNotEmpty()) {
                         IconButton(onClick = {
                             searchText = ""
-                            viewModel.setSearchQuery("")
+                            onSearchQueryChanged("")
                         }) {
                             Icon(Icons.Default.Close, contentDescription = "Clear search")
                         }
@@ -124,7 +165,7 @@ fun FeedScreen(
                 FeedFilter.entries.forEach { filter ->
                     FilterChip(
                         selected = state.filter == filter,
-                        onClick = { viewModel.setFilter(filter) },
+                        onClick = { onFilterSelected(filter) },
                         label = {
                             Text(
                                 when (filter) {
@@ -140,7 +181,7 @@ fun FeedScreen(
 
             PullToRefreshBox(
                 isRefreshing = state.isRefreshing,
-                onRefresh = viewModel::refresh,
+                onRefresh = onRefresh,
                 modifier = Modifier.fillMaxSize(),
             ) {
                 if (state.isInitialLoad) {
@@ -151,8 +192,8 @@ fun FeedScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = if (searchText.isNotBlank()) {
-                                "No predictions matching \"${searchText}\""
+                            text = if (state.searchQuery.isNotBlank()) {
+                                "No predictions matching \"${state.searchQuery}\""
                             } else {
                                 when (state.filter) {
                                     FeedFilter.ACTIVE -> "No active predictions"
@@ -176,7 +217,7 @@ fun FeedScreen(
                     }
                     LaunchedEffect(shouldLoadMore) {
                         if (shouldLoadMore && state.hasMore) {
-                            viewModel.loadMore()
+                            onLoadMore()
                         }
                     }
 
@@ -188,13 +229,7 @@ fun FeedScreen(
                         items(state.questions, key = { it.id }) { question ->
                             QuestionCard(
                                 question = question,
-                                onClick = {
-                                    if (question.isReadyToResolve) {
-                                        viewModel.showResolveSheet(question)
-                                    } else {
-                                        viewModel.showDetailSheet(question)
-                                    }
-                                },
+                                onClick = { onQuestionClick(question) },
                             )
                         }
                         if (state.isLoadingMore) {
@@ -220,8 +255,8 @@ fun FeedScreen(
         ResolveBottomSheet(
             question = question,
             isLoading = state.isResolving,
-            onResolve = { resolution -> viewModel.resolveQuestion(resolution) },
-            onDismiss = { viewModel.dismissResolveSheet() },
+            onResolve = { resolution -> onResolve(resolution) },
+            onDismiss = onDismissResolveSheet,
         )
     }
 
@@ -231,9 +266,9 @@ fun FeedScreen(
             question = question,
             forecastSliderValue = state.forecastSliderValue,
             isUpdatingForecast = state.isUpdatingForecast,
-            onForecastSliderChange = viewModel::setForecastSliderValue,
-            onUpdateForecast = viewModel::updateForecast,
-            onDismiss = { viewModel.dismissDetailSheet() },
+            onForecastSliderChange = onForecastSliderChange,
+            onUpdateForecast = onUpdateForecast,
+            onDismiss = onDismissDetailSheet,
         )
     }
 }

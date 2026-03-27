@@ -43,6 +43,26 @@ fun CreateScreen(
         if (state.success) onBack()
     }
 
+    CreateScreenContent(
+        state = state,
+        onBack = onBack,
+        onTitleChanged = viewModel::setTitle,
+        onResolveByChanged = viewModel::setResolveBy,
+        onForecastChanged = viewModel::setForecast,
+        onSubmit = viewModel::submit,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CreateScreenContent(
+    state: CreateUiState,
+    onBack: () -> Unit = {},
+    onTitleChanged: (String) -> Unit = {},
+    onResolveByChanged: (java.time.LocalDate) -> Unit = {},
+    onForecastChanged: (Float) -> Unit = {},
+    onSubmit: () -> Unit = {},
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -64,7 +84,7 @@ fun CreateScreen(
         ) {
             OutlinedTextField(
                 value = state.title,
-                onValueChange = viewModel::setTitle,
+                onValueChange = onTitleChanged,
                 label = { Text("What are you predicting?") },
                 placeholder = { Text("Will X happen by Y?") },
                 modifier = Modifier.fillMaxWidth(),
@@ -77,7 +97,7 @@ fun CreateScreen(
 
             DatePickerField(
                 selectedDate = state.resolveBy,
-                onDateSelected = viewModel::setResolveBy,
+                onDateSelected = onResolveByChanged,
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -85,7 +105,7 @@ fun CreateScreen(
 
             ProbabilitySlider(
                 value = state.forecast,
-                onValueChange = viewModel::setForecast,
+                onValueChange = onForecastChanged,
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -99,7 +119,7 @@ fun CreateScreen(
             }
 
             Button(
-                onClick = viewModel::submit,
+                onClick = onSubmit,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !state.isSubmitting && state.title.isNotBlank(),
             ) {

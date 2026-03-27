@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.paparazzi)
 }
 
 android {
@@ -90,4 +91,19 @@ dependencies {
     // DataStore & Security
     implementation(libs.datastore.preferences)
     implementation(libs.security.crypto)
+
+    // Unit tests (JVM)
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.turbine)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.truth)
+    testImplementation(libs.hilt.android.testing)
+    testImplementation(libs.okhttp.mockwebserver)
+    kspTest(libs.hilt.compiler)
+
+    // Compose UI tests (instrumented)
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(platform(libs.compose.bom))
+    debugImplementation(libs.compose.ui.test.manifest)
 }

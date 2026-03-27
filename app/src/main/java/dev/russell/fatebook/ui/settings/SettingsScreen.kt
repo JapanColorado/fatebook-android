@@ -89,6 +89,32 @@ fun SettingsScreen(
         }
     }
 
+    SettingsScreenContent(
+        state = state,
+        onBack = onBack,
+        onApiKeyChanged = viewModel::setApiKey,
+        onValidateAndSave = viewModel::validateAndSave,
+        onNotificationsEnabledChanged = viewModel::setNotificationsEnabled,
+        onReminderTimeChanged = viewModel::setReminderTime,
+        onGetApiKeyClick = {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse("https://fatebook.io/api-setup"))
+            )
+        },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreenContent(
+    state: SettingsUiState,
+    onBack: (() -> Unit)? = null,
+    onApiKeyChanged: (String) -> Unit = {},
+    onValidateAndSave: () -> Unit = {},
+    onNotificationsEnabledChanged: (Boolean) -> Unit = {},
+    onReminderTimeChanged: (Int, Int) -> Unit = { _, _ -> },
+    onGetApiKeyClick: () -> Unit = {},
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -115,23 +141,19 @@ fun SettingsScreen(
 
             OutlinedTextField(
                 value = state.apiKey,
-                onValueChange = viewModel::setApiKey,
+                onValueChange = onApiKeyChanged,
                 label = { Text("Fatebook API Key") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
             )
 
-            TextButton(onClick = {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("https://fatebook.io/api-setup"))
-                )
-            }) {
+            TextButton(onClick = onGetApiKeyClick) {
                 Text("Get your API key from fatebook.io")
             }
 
             Button(
-                onClick = viewModel::validateAndSave,
+                onClick = onValidateAndSave,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = state.apiKey.isNotBlank() && !state.isValidating,
             ) {
@@ -169,7 +191,7 @@ fun SettingsScreen(
                 Text("Daily reminder")
                 Switch(
                     checked = state.notificationsEnabled,
-                    onCheckedChange = viewModel::setNotificationsEnabled,
+                    onCheckedChange = onNotificationsEnabledChanged,
                 )
             }
 
@@ -191,7 +213,7 @@ fun SettingsScreen(
                         onDismissRequest = { showTimePicker = false },
                         confirmButton = {
                             Button(onClick = {
-                                viewModel.setReminderTime(
+                                onReminderTimeChanged(
                                     timePickerState.hour,
                                     timePickerState.minute,
                                 )

@@ -4,10 +4,9 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Trending up icon centered in adaptive icon safe zone -->
+    <!-- Bell curve (Gaussian distribution) — probability/forecasting motif -->
+    <!-- Curve sits within the 72dp safe zone (18–90) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M30,72l18,-18.03 12,12L84,37.15l-4.24,-4.24 -21.26,23.91 -12,-12L24,67.97z"
-        android:strokeWidth="2"
-        android:strokeColor="#FFFFFF"/>
+        android:pathData="M22,76 C28,76 33,74 38,68 C43,62 46,48 50,38 C52,32 54,32 54,38 C58,48 61,62 66,68 C71,74 76,76 86,76 L86,80 L22,80 Z"/>
 </vector>

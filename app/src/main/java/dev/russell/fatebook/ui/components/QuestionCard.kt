@@ -58,18 +58,23 @@ fun QuestionCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = "Resolves ${relativeDate(question.resolveBy)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (!question.isForecastHidden) {
-                    question.latestForecastAt?.let { forecastAt ->
-                        Text(
-                            text = "Predicted ${timeAgo(forecastAt)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = "Resolves ${relativeDate(question.resolveBy)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (!question.isForecastHidden) {
+                        question.latestForecastAt?.let { forecastAt ->
+                            Text(
+                                text = "Predicted ${timeAgo(forecastAt)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }

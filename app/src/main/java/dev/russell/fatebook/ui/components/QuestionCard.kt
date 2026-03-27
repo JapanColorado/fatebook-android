@@ -46,7 +46,7 @@ fun QuestionCard(
                 .fillMaxWidth()
                 .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(
                 modifier = Modifier.weight(1f),

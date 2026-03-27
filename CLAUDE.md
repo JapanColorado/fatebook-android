@@ -61,6 +61,7 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 **Test fakes** (in `app/src/test/.../testutil/`):
 - `FakeFatebookApi` — implements `FatebookApi` interface, records calls
 - `FakeQuestionDao` — in-memory DAO using `MutableStateFlow`
+- `FakeForecastDao` — in-memory forecast DAO
 - `UserPreferences` is mocked with MockK (concrete class with Android deps)
 
 ## Package Structure
@@ -68,7 +69,7 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 ```
 dev.russell.fatebook/
 ├── data/remote/         # Retrofit API interface, interceptor, DTOs
-├── data/local/          # Room database, DAO, entity
+├── data/local/          # Room database, DAOs (QuestionDao, ForecastDao), entities
 ├── data/preferences/    # EncryptedSharedPrefs + DataStore
 ├── data/repository/     # QuestionRepository (offline-first)
 ├── domain/model/        # Question, Forecast, Resolution
@@ -95,7 +96,7 @@ dev.russell.fatebook/
 - **hideForecastsUntil**: Forecasts with a future `hideForecastsUntil` date show "Hidden" in the card and "Forecast hidden until [date]" in the detail sheet
 - **Smart notification**: WorkManager daily task, only fires if no prediction made today. Tapping notification navigates to Create screen. Both `createQuestion` and `addForecast` update the last prediction date.
 - **Error handling**: Network errors (IOException) show a persistent `ErrorBanner` with retry button; other errors also use the banner with dismiss option.
-- **Analytics screen**: Accessible via chart icon in feed TopAppBar. Shows Brier score, calibration chart (Compose Canvas), prediction streak tracker, and weekly activity bar chart. All computed from Room DB cache.
+- **Analytics screen**: Accessible via chart icon in feed TopAppBar. Shows Brier score (with help popup), calibration chart (selectable dots, 5% buckets), prediction streak tracker, and weekly activity bar chart (clickable bars). Uses ALL forecasts per question (stored in `ForecastEntity` table), not just the latest — matching the Fatebook website. `AnalyticsViewModel.init` calls `loadAllQuestions()` to fetch all pages before computing.
 - **Multi-option filtering**: Only BINARY questions shown; MULTIPLE_CHOICE and QUANTITY types are filtered out in the repository.
 - **Offline-first**: Room cache shows questions immediately, background API refresh
 - **Material You**: Dynamic color theming on Android 12+, dark mode support

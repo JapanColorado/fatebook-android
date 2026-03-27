@@ -17,7 +17,7 @@ data class Question(
     val forecastHiddenUntil: Instant? = null,
 ) {
     val isReadyToResolve: Boolean
-        get() = !resolved && Instant.now().isAfter(resolveBy)
+        get() = !resolved && !Instant.now().isBefore(resolveBy)
 
     val isForecastHidden: Boolean
         get() = forecastHiddenUntil != null && Instant.now().isBefore(forecastHiddenUntil)

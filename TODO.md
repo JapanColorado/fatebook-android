@@ -1,20 +1,10 @@
 # TODO
 
-## General
+## Bugs
 
-- [ ] Date selector shouldn't be dim-grayed out in prediction card if you selected a different date than that day.
-- [ ] Resolution dates are one day off. (mar 27 → resolve any time on mar. 27, not after march 27)
-- [ ] Dots on graph should be selectable and display the number for that data point.
-- [ ] Graph appears to not use all data points (39 in app vs ~65 in website)
-- [ ] "Lower is better" text should be pop up when Brier Score is click on, and a little question mark help icon should indicate it's clickable
-- [ ] "Brier Score" text should be size of the number and in line with number, eg. 0.12 Brier Score
-- [ ] Bars should be clickable on bar graph, with it showing the number of predictions on the day and the specific date when clicked
+- [ ] Resolves today shown as 22 hr overdue
 
-## Known Bugs
-
-(none)
-
-## Future Ideas
+## Feature Ideas
 
 - [ ] Tags/categories for organizing predictions by domain
 - [ ] Quick-forecast templates (pre-filled question patterns for recurring prediction types)
@@ -32,6 +22,14 @@
 ## Archive
 
 ### General
+- [x] Date selector shouldn't be dim-grayed out in prediction card if you selected a different date than that day.
+- [x] Resolution dates are one day off. (mar 27 → resolve any time on mar. 27, not after march 27)
+- [x] Dots on graph should be selectable and display the number for that data point.
+- [x] Graph appears to not use all data points (39 in app vs ~65 in website)
+- [x] "Lower is better" text should be pop up when Brier Score is click on, and a little question mark help icon should indicate it's clickable
+- [x] "Brier Score" text should be size of the number and in line with number, eg. 0.12 Brier Score
+- [x] Bars should be clickable on bar graph, with it showing the number of predictions on the day and the specific date when clicked
+- [x] The prediction number and date should be center aligned (especially on long-text cards)
 - [x] Resolved should be sorted new->old
 - [x] How to do automated testing with Claude?
 - [x] Last prediction date should be right justified, in line with resolve date

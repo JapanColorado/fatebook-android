@@ -1,7 +1,10 @@
 package dev.russell.fatebook.ui.analytics
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,10 +17,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,20 +32,24 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,7 +100,7 @@ fun AnalyticsScreenContent(
             ) {
                 BrierScoreCard(
                     brierScore = state.brierScore,
-                    totalResolved = state.totalResolved,
+                    totalForecasts = state.totalForecasts,
                 )
 
                 CalibrationChart(buckets = state.calibrationBuckets)
@@ -107,8 +116,10 @@ fun AnalyticsScreenContent(
 @Composable
 private fun BrierScoreCard(
     brierScore: Double?,
-    totalResolved: Int,
+    totalForecasts: Int,
 ) {
+    var showTooltip by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -118,24 +129,44 @@ private fun BrierScoreCard(
         Column(
             modifier = Modifier.padding(16.dp),
         ) {
-            Text(
-                text = brierScore?.let { "%.2f".format(it) } ?: "--",
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = "Brier Score",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = brierScore?.let { "%.2f".format(it) } ?: "--",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "Brier Score",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Box {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                        contentDescription = "What is Brier Score?",
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { showTooltip = true },
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    DropdownMenu(
+                        expanded = showTooltip,
+                        onDismissRequest = { showTooltip = false },
+                    ) {
+                        Text(
+                            text = "Lower is better. Perfect = 0.0",
+                            modifier = Modifier.padding(16.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Lower is better. Perfect = 0.0",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = "Based on $totalResolved resolved predictions",
+                text = "Based on $totalForecasts forecasts",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -150,19 +181,47 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
         style = MaterialTheme.typography.titleMedium,
     )
 
+    var selectedBucketIndex by remember { mutableStateOf<Int?>(null) }
+    val dotPositions = remember { mutableListOf<Offset>() }
+
     val primaryColor = MaterialTheme.colorScheme.primary
     val outlineColor = MaterialTheme.colorScheme.outline
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+    val surfaceVariantColor = MaterialTheme.colorScheme.surfaceVariant
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = TextStyle(
         fontSize = 10.sp,
+        color = onSurfaceColor,
+    )
+    val tooltipStyle = TextStyle(
+        fontSize = 11.sp,
         color = onSurfaceColor,
     )
 
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp),
+            .height(200.dp)
+            .pointerInput(buckets) {
+                val threshold = 24.dp.toPx()
+                detectTapGestures { offset ->
+                    val nearest = dotPositions.withIndex().minByOrNull { (_, pos) ->
+                        sqrt(
+                            (pos.x - offset.x) * (pos.x - offset.x) +
+                                (pos.y - offset.y) * (pos.y - offset.y),
+                        )
+                    }
+                    if (nearest != null) {
+                        val dist = sqrt(
+                            (nearest.value.x - offset.x) * (nearest.value.x - offset.x) +
+                                (nearest.value.y - offset.y) * (nearest.value.y - offset.y),
+                        )
+                        selectedBucketIndex = if (dist <= threshold) nearest.index else null
+                    } else {
+                        selectedBucketIndex = null
+                    }
+                }
+            },
     ) {
         val chartLeft = 36.dp.toPx()
         val chartBottom = size.height - 24.dp.toPx()
@@ -215,7 +274,7 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
             )
         }
 
-        // Draw data points and connecting lines
+        // Draw data points
         if (buckets.isNotEmpty()) {
             val points = buckets.map { bucket ->
                 val x = chartLeft + chartWidth * bucket.predictedRate
@@ -223,23 +282,51 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
                 Offset(x, y)
             }
 
-            // Connect dots with lines
-            for (i in 0 until points.size - 1) {
-                drawLine(
+            dotPositions.clear()
+            dotPositions.addAll(points)
+
+            // Draw dots
+            points.forEachIndexed { i, point ->
+                val radius = 4.dp.toPx() + 2.dp.toPx() * (buckets[i].count.coerceAtMost(10) / 10f)
+                drawCircle(
                     color = primaryColor,
-                    start = points[i],
-                    end = points[i + 1],
-                    strokeWidth = 2f,
+                    radius = radius,
+                    center = point,
                 )
             }
 
-            // Draw dots
-            points.forEach { point ->
-                drawCircle(
-                    color = primaryColor,
-                    radius = 5.dp.toPx(),
-                    center = point,
-                )
+            // Draw selected dot highlight + tooltip
+            selectedBucketIndex?.let { idx ->
+                if (idx in buckets.indices) {
+                    val bucket = buckets[idx]
+                    val point = points[idx]
+
+                    drawCircle(
+                        color = onSurfaceColor,
+                        radius = 8.dp.toPx(),
+                        center = point,
+                        style = Stroke(width = 2f),
+                    )
+
+                    val tooltipText = "${bucket.rangeLabel}: ${(bucket.actualRate * 100).toInt()}% actual (n=${bucket.count})"
+                    val textResult = textMeasurer.measure(tooltipText, tooltipStyle)
+                    val tooltipX = (point.x - textResult.size.width / 2f)
+                        .coerceIn(chartLeft, chartRight - textResult.size.width)
+                    val tooltipY = point.y - 12.dp.toPx() - textResult.size.height
+
+                    drawRect(
+                        color = surfaceVariantColor,
+                        topLeft = Offset(tooltipX - 4.dp.toPx(), tooltipY - 2.dp.toPx()),
+                        size = Size(
+                            textResult.size.width + 8.dp.toPx(),
+                            textResult.size.height + 4.dp.toPx(),
+                        ),
+                    )
+                    drawText(
+                        textLayoutResult = textResult,
+                        topLeft = Offset(tooltipX, tooltipY),
+                    )
+                }
             }
         }
     }
@@ -287,18 +374,46 @@ private fun ActivityChart(weeklyActivity: List<WeekActivity>) {
         style = MaterialTheme.typography.titleMedium,
     )
 
+    var selectedBarIndex by remember { mutableStateOf<Int?>(null) }
+
     val primaryColor = MaterialTheme.colorScheme.primary
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+    val surfaceVariantColor = MaterialTheme.colorScheme.surfaceVariant
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = TextStyle(
         fontSize = 8.sp,
+        color = onSurfaceColor,
+    )
+    val tooltipStyle = TextStyle(
+        fontSize = 10.sp,
         color = onSurfaceColor,
     )
 
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(160.dp),
+            .height(160.dp)
+            .pointerInput(weeklyActivity) {
+                if (weeklyActivity.isEmpty()) return@pointerInput
+                val chartLeftPx = 28.dp.toPx()
+                val chartRightPx = size.width - 8.dp.toPx()
+                val chartWidthPx = chartRightPx - chartLeftPx
+                val slotWidth = chartWidthPx / weeklyActivity.size
+                val gapWidthPx = slotWidth * 0.3f
+
+                detectTapGestures { offset ->
+                    val tappedIndex = weeklyActivity.indices.firstOrNull { i ->
+                        val barLeft = chartLeftPx + slotWidth * i + gapWidthPx / 2f
+                        val barRight = barLeft + slotWidth * 0.7f
+                        offset.x >= barLeft && offset.x <= barRight
+                    }
+                    selectedBarIndex = if (tappedIndex != null && weeklyActivity[tappedIndex].count > 0) {
+                        tappedIndex
+                    } else {
+                        null
+                    }
+                }
+            },
     ) {
         if (weeklyActivity.isEmpty()) return@Canvas
 
@@ -330,7 +445,7 @@ private fun ActivityChart(weeklyActivity: List<WeekActivity>) {
                 drawRect(
                     color = primaryColor,
                     topLeft = Offset(barLeft, barTop),
-                    size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                    size = Size(barWidth, barHeight),
                 )
             }
 
@@ -356,6 +471,42 @@ private fun ActivityChart(weeklyActivity: List<WeekActivity>) {
                 textLayoutResult = textResult,
                 topLeft = Offset(chartLeft - textResult.size.width - 4.dp.toPx(), y - textResult.size.height / 2f),
             )
+        }
+
+        // Draw selected bar highlight + tooltip
+        selectedBarIndex?.let { idx ->
+            if (idx in weeklyActivity.indices) {
+                val week = weeklyActivity[idx]
+                val barLeft = chartLeft + (chartWidth / weeklyActivity.size) * idx + gapWidth / 2f
+                val barHeight = (week.count.toFloat() / maxCount) * chartHeight
+                val barTop = chartBottom - barHeight
+
+                drawRect(
+                    color = onSurfaceColor,
+                    topLeft = Offset(barLeft, barTop),
+                    size = Size(barWidth, barHeight),
+                    style = Stroke(width = 2f),
+                )
+
+                val tooltipText = "${week.count} predictions – ${week.weekLabel}"
+                val textResult = textMeasurer.measure(tooltipText, tooltipStyle)
+                val tooltipX = (barLeft + barWidth / 2 - textResult.size.width / 2f)
+                    .coerceIn(chartLeft, chartRight - textResult.size.width)
+                val tooltipY = barTop - textResult.size.height - 6.dp.toPx()
+
+                drawRect(
+                    color = surfaceVariantColor,
+                    topLeft = Offset(tooltipX - 4.dp.toPx(), tooltipY - 2.dp.toPx()),
+                    size = Size(
+                        textResult.size.width + 8.dp.toPx(),
+                        textResult.size.height + 4.dp.toPx(),
+                    ),
+                )
+                drawText(
+                    textLayoutResult = textResult,
+                    topLeft = Offset(tooltipX, tooltipY),
+                )
+            }
         }
     }
 }

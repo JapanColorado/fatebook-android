@@ -1,5 +1,7 @@
 package dev.russell.fatebook.data.repository
 
+import dev.russell.fatebook.data.local.ForecastDao
+import dev.russell.fatebook.data.local.ForecastEntity
 import dev.russell.fatebook.data.local.QuestionDao
 import dev.russell.fatebook.data.local.QuestionEntity
 import dev.russell.fatebook.data.preferences.UserPreferences
@@ -21,6 +23,7 @@ import javax.inject.Singleton
 class QuestionRepository @Inject constructor(
     private val api: FatebookApi,
     private val dao: QuestionDao,
+    private val forecastDao: ForecastDao,
     private val prefs: UserPreferences,
 ) {
     private var nextCursor: Int? = null
@@ -42,6 +45,9 @@ class QuestionRepository @Inject constructor(
     fun observeAll(): Flow<List<Question>> =
         dao.observeAll().map { entities -> entities.map { it.toDomain() } }
 
+    fun observeAllForecasts(): Flow<List<ForecastEntity>> =
+        forecastDao.observeAll()
+
     /** Fetch first page from API and replace local cache. */
     suspend fun refresh(): List<Question> {
         val response = api.getQuestions()
@@ -49,7 +55,9 @@ class QuestionRepository @Inject constructor(
         val binaryOnly = response.items.filter { it.isBinary }
         val entities = binaryOnly.map { it.toEntity() }
         dao.deleteAll()
+        forecastDao.deleteAll()
         dao.upsertAll(entities)
+        forecastDao.upsertAll(binaryOnly.flatMap { it.toForecastEntities() })
         return binaryOnly.map { it.toDomain() }
     }
 
@@ -61,10 +69,19 @@ class QuestionRepository @Inject constructor(
         val binaryOnly = response.items.filter { it.isBinary }
         val entities = binaryOnly.map { it.toEntity() }
         dao.upsertAll(entities)
+        forecastDao.upsertAll(binaryOnly.flatMap { it.toForecastEntities() })
         return response.nextCursor != null
     }
 
     fun hasMore(): Boolean = nextCursor != null
+
+    /** Fetch all pages from API, populating the local cache. */
+    suspend fun loadAllQuestions() {
+        refresh()
+        while (hasMore()) {
+            loadMore()
+        }
+    }
 
     suspend fun createQuestion(
         title: String,
@@ -133,6 +150,17 @@ class QuestionRepository @Inject constructor(
             },
         )
     }
+
+    private fun QuestionDto.toForecastEntities(): List<ForecastEntity> =
+        forecasts
+            ?.filter { it.forecast != null && it.createdAt != null }
+            ?.map { dto ->
+                ForecastEntity(
+                    questionId = id,
+                    forecast = dto.forecast!!,
+                    createdAtEpochMs = parseInstant(dto.createdAt!!).toEpochMilli(),
+                )
+            } ?: emptyList()
 
     private fun QuestionDto.toDomain(): Question {
         val latest = forecasts

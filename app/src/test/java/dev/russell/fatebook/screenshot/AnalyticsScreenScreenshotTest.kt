@@ -36,7 +36,7 @@ class AnalyticsScreenScreenshotTest {
                     state = AnalyticsUiState(
                         isLoading = false,
                         brierScore = null,
-                        totalResolved = 0,
+                        totalForecasts = 0,
                         calibrationBuckets = emptyList(),
                         currentStreak = 0,
                         weeklyActivity = (0 until 12).map {
@@ -56,16 +56,21 @@ class AnalyticsScreenScreenshotTest {
                     state = AnalyticsUiState(
                         isLoading = false,
                         brierScore = 0.18,
-                        totalResolved = 42,
+                        totalForecasts = 42,
                         calibrationBuckets = listOf(
-                            CalibrationBucket("0-10%", 0.05f, 0.08f, 5),
-                            CalibrationBucket("10-20%", 0.15f, 0.12f, 8),
-                            CalibrationBucket("20-30%", 0.25f, 0.30f, 6),
-                            CalibrationBucket("40-50%", 0.45f, 0.50f, 10),
-                            CalibrationBucket("60-70%", 0.65f, 0.58f, 7),
-                            CalibrationBucket("70-80%", 0.75f, 0.72f, 12),
-                            CalibrationBucket("80-90%", 0.85f, 0.80f, 9),
-                            CalibrationBucket("90-100%", 0.95f, 0.93f, 4),
+                            CalibrationBucket("0-5%", 0.025f, 0.04f, 3),
+                            CalibrationBucket("5-10%", 0.075f, 0.10f, 4),
+                            CalibrationBucket("10-15%", 0.125f, 0.08f, 5),
+                            CalibrationBucket("15-20%", 0.175f, 0.18f, 3),
+                            CalibrationBucket("25-30%", 0.275f, 0.30f, 4),
+                            CalibrationBucket("35-40%", 0.375f, 0.40f, 3),
+                            CalibrationBucket("45-50%", 0.475f, 0.50f, 6),
+                            CalibrationBucket("55-60%", 0.575f, 0.55f, 4),
+                            CalibrationBucket("65-70%", 0.675f, 0.62f, 5),
+                            CalibrationBucket("75-80%", 0.775f, 0.72f, 7),
+                            CalibrationBucket("80-85%", 0.825f, 0.80f, 5),
+                            CalibrationBucket("90-95%", 0.925f, 0.90f, 3),
+                            CalibrationBucket("95-100%", 0.975f, 0.96f, 2),
                         ),
                         currentStreak = 7,
                         weeklyActivity = listOf(
@@ -96,11 +101,11 @@ class AnalyticsScreenScreenshotTest {
                     state = AnalyticsUiState(
                         isLoading = false,
                         brierScore = 0.22,
-                        totalResolved = 15,
+                        totalForecasts = 15,
                         calibrationBuckets = listOf(
-                            CalibrationBucket("20-30%", 0.25f, 0.20f, 4),
-                            CalibrationBucket("50-60%", 0.55f, 0.60f, 6),
-                            CalibrationBucket("80-90%", 0.85f, 0.78f, 5),
+                            CalibrationBucket("20-25%", 0.225f, 0.20f, 4),
+                            CalibrationBucket("50-55%", 0.525f, 0.60f, 6),
+                            CalibrationBucket("80-85%", 0.825f, 0.78f, 5),
                         ),
                         currentStreak = 3,
                         weeklyActivity = listOf(

@@ -26,6 +26,16 @@ class QuestionTest {
     }
 
     @Test
+    fun `isReadyToResolve true at exact resolveBy instant`() {
+        val now = Instant.now()
+        val question = TestData.question(
+            resolved = false,
+            resolveBy = now,
+        )
+        assertThat(question.isReadyToResolve).isTrue()
+    }
+
+    @Test
     fun `isReadyToResolve false when resolveBy is in the future`() {
         val question = TestData.question(
             resolved = false,

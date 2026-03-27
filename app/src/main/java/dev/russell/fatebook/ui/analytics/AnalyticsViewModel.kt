@@ -3,6 +3,7 @@ package dev.russell.fatebook.ui.analytics
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.russell.fatebook.data.local.ForecastEntity
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.Resolution
@@ -10,12 +11,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.time.temporal.IsoFields
 import javax.inject.Inject
 
 data class CalibrationBucket(
@@ -32,7 +32,7 @@ data class WeekActivity(
 
 data class AnalyticsUiState(
     val brierScore: Double? = null,
-    val totalResolved: Int = 0,
+    val totalForecasts: Int = 0,
     val calibrationBuckets: List<CalibrationBucket> = emptyList(),
     val currentStreak: Int = 0,
     val weeklyActivity: List<WeekActivity> = emptyList(),
@@ -44,70 +44,103 @@ class AnalyticsViewModel @Inject constructor(
     private val repository: QuestionRepository,
 ) : ViewModel() {
 
+    init {
+        viewModelScope.launch {
+            try {
+                repository.loadAllQuestions()
+            } catch (_: Exception) {
+                // Analytics can still show cached data if network fails
+            }
+        }
+    }
+
     val uiState: StateFlow<AnalyticsUiState> = combine(
         repository.observeAll(),
         repository.observeResolved(),
-    ) { allQuestions, resolvedQuestions ->
+        repository.observeAllForecasts(),
+    ) { allQuestions, resolvedQuestions, allForecasts ->
+        val forecastsByQuestion = allForecasts.groupBy { it.questionId }
+
         AnalyticsUiState(
-            brierScore = computeBrierScore(resolvedQuestions),
-            totalResolved = resolvedQuestions.count { it.resolution != null && it.resolution != Resolution.AMBIGUOUS && it.yourLatestForecast != null },
-            calibrationBuckets = computeCalibrationBuckets(resolvedQuestions),
-            currentStreak = computeStreak(allQuestions),
-            weeklyActivity = computeWeeklyActivity(allQuestions),
+            brierScore = computeBrierScore(resolvedQuestions, forecastsByQuestion),
+            totalForecasts = countScoredForecasts(resolvedQuestions, forecastsByQuestion),
+            calibrationBuckets = computeCalibrationBuckets(resolvedQuestions, forecastsByQuestion),
+            currentStreak = computeStreak(allForecasts),
+            weeklyActivity = computeWeeklyActivity(allForecasts),
             isLoading = false,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalyticsUiState())
 
     companion object {
 
-        fun computeBrierScore(resolvedQuestions: List<Question>): Double? {
-            val scored = resolvedQuestions.filter { q ->
-                q.yourLatestForecast != null && q.resolution != null && q.resolution != Resolution.AMBIGUOUS
-            }
-            if (scored.isEmpty()) return null
-            val sum = scored.sumOf { q ->
-                val outcome = if (q.resolution == Resolution.YES) 1.0 else 0.0
-                val forecast = q.yourLatestForecast!!
-                (forecast - outcome) * (forecast - outcome)
-            }
-            return sum / scored.size
+        /** Pairs each forecast with its question's resolution for scoring. */
+        private fun scoredPairs(
+            resolvedQuestions: List<Question>,
+            forecastsByQuestion: Map<String, List<ForecastEntity>>,
+        ): List<Pair<Double, Resolution>> {
+            return resolvedQuestions
+                .filter { it.resolution != null && it.resolution != Resolution.AMBIGUOUS }
+                .flatMap { q ->
+                    val forecasts = forecastsByQuestion[q.id] ?: emptyList()
+                    forecasts.map { it.forecast to q.resolution!! }
+                }
         }
 
-        fun computeCalibrationBuckets(resolvedQuestions: List<Question>): List<CalibrationBucket> {
-            val scored = resolvedQuestions.filter { q ->
-                q.yourLatestForecast != null && q.resolution != null && q.resolution != Resolution.AMBIGUOUS
-            }
+        fun countScoredForecasts(
+            resolvedQuestions: List<Question>,
+            forecastsByQuestion: Map<String, List<ForecastEntity>>,
+        ): Int = scoredPairs(resolvedQuestions, forecastsByQuestion).size
 
-            val bucketRanges = listOf(
-                0 to 10, 10 to 20, 20 to 30, 30 to 40, 40 to 50,
-                50 to 60, 60 to 70, 70 to 80, 80 to 90, 90 to 100,
-            )
+        fun computeBrierScore(
+            resolvedQuestions: List<Question>,
+            forecastsByQuestion: Map<String, List<ForecastEntity>>,
+        ): Double? {
+            val pairs = scoredPairs(resolvedQuestions, forecastsByQuestion)
+            if (pairs.isEmpty()) return null
+            val sum = pairs.sumOf { (forecast, resolution) ->
+                val outcome = if (resolution == Resolution.YES) 1.0 else 0.0
+                (forecast - outcome) * (forecast - outcome)
+            }
+            return sum / pairs.size
+        }
+
+        fun computeCalibrationBuckets(
+            resolvedQuestions: List<Question>,
+            forecastsByQuestion: Map<String, List<ForecastEntity>>,
+        ): List<CalibrationBucket> {
+            val pairs = scoredPairs(resolvedQuestions, forecastsByQuestion)
+
+            val bucketSize = 5
+            val bucketRanges = (0 until 100 step bucketSize).map { it to it + bucketSize }
 
             return bucketRanges.mapNotNull { (low, high) ->
-                val inBucket = scored.filter { q ->
-                    val pct = q.yourLatestForecast!! * 100
+                val inBucket = pairs.filter { (forecast, _) ->
+                    val pct = forecast * 100
                     if (high == 100) pct >= low && pct <= high
                     else pct >= low && pct < high
                 }
                 if (inBucket.isEmpty()) return@mapNotNull null
 
-                val predictedRate = inBucket.map { it.yourLatestForecast!!.toFloat() }.average().toFloat()
-                val yesCount = inBucket.count { it.resolution == Resolution.YES }
+                val bucketCenter = (low + high) / 2f / 100f
+                val yesCount = inBucket.count { (_, resolution) -> resolution == Resolution.YES }
                 val actualRate = yesCount.toFloat() / inBucket.size.toFloat()
 
                 CalibrationBucket(
                     rangeLabel = "$low-$high%",
-                    predictedRate = predictedRate,
+                    predictedRate = bucketCenter,
                     actualRate = actualRate,
                     count = inBucket.size,
                 )
             }
         }
 
-        fun computeStreak(allQuestions: List<Question>): Int {
-            val datesWithForecasts = allQuestions
-                .filter { it.latestForecastAt != null }
-                .map { it.latestForecastAt!!.atZone(ZoneId.systemDefault()).toLocalDate() }
+        fun computeStreak(allForecasts: List<ForecastEntity>): Int {
+            val datesWithForecasts = allForecasts
+                .map {
+                    Instant.ofEpochMilli(it.createdAtEpochMs)
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate()
+                }
                 .toSet()
 
             if (datesWithForecasts.isEmpty()) return 0
@@ -121,23 +154,20 @@ class AnalyticsViewModel @Inject constructor(
             return streak
         }
 
-        fun computeWeeklyActivity(allQuestions: List<Question>): List<WeekActivity> {
+        fun computeWeeklyActivity(allForecasts: List<ForecastEntity>): List<WeekActivity> {
             val now = LocalDate.now()
-            val twelveWeeksAgo = now.minusWeeks(12)
             val weekFormatter = DateTimeFormatter.ofPattern("MMM d")
 
-            val questionsWithForecast = allQuestions.filter { it.latestForecastAt != null }
-
-            // Build 12 weeks of buckets
             val weeks = (0 until 12).map { weeksAgo ->
-                val weekStart = now.minusWeeks(11L - weeksAgo).with(java.time.DayOfWeek.MONDAY)
-                weekStart
+                now.minusWeeks(11L - weeksAgo).with(java.time.DayOfWeek.MONDAY)
             }
 
             return weeks.map { weekStart ->
                 val weekEnd = weekStart.plusDays(7)
-                val count = questionsWithForecast.count { q ->
-                    val forecastDate = q.latestForecastAt!!.atZone(ZoneId.systemDefault()).toLocalDate()
+                val count = allForecasts.count { f ->
+                    val forecastDate = Instant.ofEpochMilli(f.createdAtEpochMs)
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate()
                     !forecastDate.isBefore(weekStart) && forecastDate.isBefore(weekEnd)
                 }
                 WeekActivity(

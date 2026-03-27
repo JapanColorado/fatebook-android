@@ -1,6 +1,7 @@
 package dev.russell.fatebook.ui.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material3.DatePicker
@@ -12,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +42,16 @@ fun DatePickerField(
             .toEpochMilli()
     )
 
+    val interactionSource = remember { MutableInteractionSource() }
+
+    LaunchedEffect(interactionSource) {
+        interactionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Press) {
+                showDialog = true
+            }
+        }
+    }
+
     OutlinedTextField(
         value = selectedDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy")),
         onValueChange = {},
@@ -48,8 +60,8 @@ fun DatePickerField(
         trailingIcon = {
             Icon(Icons.Default.CalendarToday, contentDescription = "Pick date")
         },
-        modifier = modifier.clickable { showDialog = true },
-        enabled = false, // Prevents keyboard; click still works via modifier
+        modifier = modifier,
+        interactionSource = interactionSource,
     )
 
     if (showDialog) {

@@ -7,6 +7,7 @@ import dev.russell.fatebook.data.remote.dto.ForecastDto
 import dev.russell.fatebook.data.remote.dto.QuestionsResponseDto
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.FakeFatebookApi
+import dev.russell.fatebook.testutil.FakeForecastDao
 import dev.russell.fatebook.testutil.FakeQuestionDao
 import dev.russell.fatebook.testutil.TestData
 import io.mockk.coVerify
@@ -21,6 +22,7 @@ class QuestionRepositoryTest {
 
     private lateinit var api: FakeFatebookApi
     private lateinit var dao: FakeQuestionDao
+    private lateinit var forecastDao: FakeForecastDao
     private lateinit var prefs: UserPreferences
     private lateinit var repository: QuestionRepository
 
@@ -28,9 +30,10 @@ class QuestionRepositoryTest {
     fun setup() {
         api = FakeFatebookApi()
         dao = FakeQuestionDao()
+        forecastDao = FakeForecastDao()
         prefs = mockk(relaxed = true)
         every { prefs.apiKey } returns "test-api-key"
-        repository = QuestionRepository(api, dao, prefs)
+        repository = QuestionRepository(api, dao, forecastDao, prefs)
     }
 
     // --- refresh ---
@@ -261,6 +264,59 @@ class QuestionRepositoryTest {
         val result = repository.validateApiKey()
 
         assertThat(result).isFalse()
+    }
+
+    // --- forecast storage ---
+
+    @Test
+    fun `refresh stores forecasts alongside questions`() = runTest {
+        val dto = TestData.questionDto(
+            id = "q1",
+            forecasts = listOf(
+                ForecastDto("u1", 0.3, "2020-01-01T00:00:00Z", null),
+                ForecastDto("u1", 0.7, "2020-02-01T00:00:00Z", null),
+            ),
+        )
+        api.getQuestionsResponse = { QuestionsResponseDto(listOf(dto), null) }
+
+        repository.refresh()
+
+        assertThat(forecastDao.storedForecasts).hasSize(2)
+        assertThat(forecastDao.storedForecasts.map { it.forecast }).containsExactly(0.3, 0.7)
+        assertThat(forecastDao.storedForecasts.all { it.questionId == "q1" }).isTrue()
+    }
+
+    @Test
+    fun `refresh clears old forecasts`() = runTest {
+        repository.refresh()
+        assertThat(forecastDao.deleteAllCallCount).isEqualTo(1)
+    }
+
+    // --- loadAllQuestions ---
+
+    @Test
+    fun `loadAllQuestions fetches all pages`() = runTest {
+        api.getQuestionsResponse = { cursor ->
+            when (cursor) {
+                null -> TestData.questionsResponse(
+                    items = listOf(TestData.questionDto(id = "q1")),
+                    nextCursor = 2,
+                )
+                2 -> TestData.questionsResponse(
+                    items = listOf(TestData.questionDto(id = "q2")),
+                    nextCursor = 3,
+                )
+                3 -> TestData.questionsResponse(
+                    items = listOf(TestData.questionDto(id = "q3")),
+                )
+                else -> TestData.questionsResponse()
+            }
+        }
+
+        repository.loadAllQuestions()
+
+        assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2", "q3")
+        assertThat(repository.hasMore()).isFalse()
     }
 
     // --- observe flows ---

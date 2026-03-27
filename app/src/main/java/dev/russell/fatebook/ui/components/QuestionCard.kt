@@ -59,7 +59,11 @@ fun QuestionCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "Resolves ${relativeDate(question.resolveBy)}",
+                    text = if (question.resolved) {
+                        "Resolved ${absoluteDate(question.resolveBy)}"
+                    } else {
+                        "Resolution ${relativeDate(question.resolveBy)}"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -122,6 +126,10 @@ private fun timeAgo(instant: Instant): String {
         else -> "just now"
     }
 }
+
+private fun absoluteDate(instant: Instant): String =
+    instant.atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
 
 private fun relativeDate(instant: Instant): String {
     val now = Instant.now()

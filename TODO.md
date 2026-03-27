@@ -2,9 +2,13 @@
 
 ## General
 
-- [x] Search bar should autocapitalize
-- [x] I select a date in the resolve by, and then it shows up as the day before in the resolve by bar and then is all weird as well in the feed. Also, when I say resolve today, it doesn't show as ready to resolve.
-- [x] "Predicted by x" text should be all the way right justified (below percentage)
+- [ ] Date selector shouldn't be dim-grayed out in prediction card if you selected a different date than that day.
+- [ ] Resolution dates are one day off. (mar 27 → resolve any time on mar. 27, not after march 27)
+- [ ] Dots on graph should be selectable and display the number for that data point.
+- [ ] Graph appears to not use all data points (39 in app vs ~65 in website)
+- [ ] "Lower is better" text should be pop up when Brier Score is click on, and a little question mark help icon should indicate it's clickable
+- [ ] "Brier Score" text should be size of the number and in line with number, eg. 0.12 Brier Score
+- [ ] Bars should be clickable on bar graph, with it showing the number of predictions on the day and the specific date when clicked
 
 ## Known Bugs
 
@@ -31,6 +35,9 @@
 - [x] Resolved should be sorted new->old
 - [x] How to do automated testing with Claude?
 - [x] Last prediction date should be right justified, in line with resolve date
+- [x] Search bar should autocapitalize
+- [x] I select a date in the resolve by, and then it shows up as the day before in the resolve by bar and then is all weird as well in the feed. Also, when I say resolve today, it doesn't show as ready to resolve.
+- [x] "Predicted by x" text should be all the way right justified (below percentage)
 
 ### Known Bugs
 - [x] Multi-option predictions aren't working (filter out or major redesign?)

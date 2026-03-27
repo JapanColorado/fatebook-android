@@ -6,6 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.russell.fatebook.data.preferences.UserPreferences
+import dev.russell.fatebook.ui.analytics.AnalyticsScreen
 import dev.russell.fatebook.ui.create.CreateScreen
 import dev.russell.fatebook.ui.feed.FeedScreen
 import dev.russell.fatebook.ui.settings.SettingsScreen
@@ -29,6 +30,13 @@ fun FatebookNavGraph(
             FeedScreen(
                 onCreateClick = { navController.navigate(Routes.CREATE) },
                 onSettingsClick = { navController.navigate(Routes.SETTINGS) },
+                onAnalyticsClick = { navController.navigate(Routes.ANALYTICS) },
+            )
+        }
+
+        composable(Routes.ANALYTICS) {
+            AnalyticsScreen(
+                onBack = { navController.popBackStack() },
             )
         }
 

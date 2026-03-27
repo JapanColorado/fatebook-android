@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +55,7 @@ import androidx.compose.material3.OutlinedTextField
 fun FeedScreen(
     onCreateClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onAnalyticsClick: () -> Unit,
     viewModel: FeedViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -62,6 +64,7 @@ fun FeedScreen(
         state = state,
         onCreateClick = onCreateClick,
         onSettingsClick = onSettingsClick,
+        onAnalyticsClick = onAnalyticsClick,
         onFilterSelected = viewModel::setFilter,
         onSearchQueryChanged = viewModel::setSearchQuery,
         onRefresh = viewModel::refresh,
@@ -88,6 +91,7 @@ fun FeedScreenContent(
     state: FeedUiState,
     onCreateClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onAnalyticsClick: () -> Unit = {},
     onFilterSelected: (FeedFilter) -> Unit = {},
     onSearchQueryChanged: (String) -> Unit = {},
     onRefresh: () -> Unit = {},
@@ -105,6 +109,9 @@ fun FeedScreenContent(
             TopAppBar(
                 title = { Text("Fatebook") },
                 actions = {
+                    IconButton(onClick = onAnalyticsClick) {
+                        Icon(Icons.Default.BarChart, contentDescription = "Analytics")
+                    }
                     IconButton(onClick = onSettingsClick) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }

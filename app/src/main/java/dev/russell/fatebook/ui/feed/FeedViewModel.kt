@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.russell.fatebook.data.repository.QuestionRepository
+import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.Resolution
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -14,8 +15,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.IOException
+import java.time.LocalDate
 import javax.inject.Inject
 
 enum class FeedFilter { ACTIVE, READY_TO_RESOLVE, RESOLVED }
@@ -26,6 +29,23 @@ sealed interface FeedError {
     data class Other(override val message: String) : FeedError
 }
 
+data class DetailSheetState(
+    val question: Question? = null,
+    val forecastSliderValue: Float = 0.5f,
+    val isUpdatingForecast: Boolean = false,
+    val isEditing: Boolean = false,
+    val editTitle: String = "",
+    val editResolveBy: LocalDate? = null,
+    val editNotes: String = "",
+    val comments: List<Comment> = emptyList(),
+    val isLoadingComments: Boolean = false,
+    val commentText: String = "",
+    val isAddingComment: Boolean = false,
+    val showDeleteConfirmation: Boolean = false,
+    val isDeleting: Boolean = false,
+    val isSaving: Boolean = false,
+)
+
 data class FeedUiState(
     val questions: List<Question> = emptyList(),
     val filter: FeedFilter = FeedFilter.ACTIVE,
@@ -33,10 +53,8 @@ data class FeedUiState(
     val error: FeedError? = null,
     val resolveTarget: Question? = null,
     val isResolving: Boolean = false,
-    val detailTarget: Question? = null,
+    val detail: DetailSheetState = DetailSheetState(),
     val searchQuery: String = "",
-    val forecastSliderValue: Float = 0.5f,
-    val isUpdatingForecast: Boolean = false,
     val isInitialLoad: Boolean = true,
     val hasMore: Boolean = false,
     val isLoadingMore: Boolean = false,
@@ -52,10 +70,8 @@ class FeedViewModel @Inject constructor(
     private val _error = MutableStateFlow<FeedError?>(null)
     private val _resolveTarget = MutableStateFlow<Question?>(null)
     private val _isResolving = MutableStateFlow(false)
-    private val _detailTarget = MutableStateFlow<Question?>(null)
+    private val _detail = MutableStateFlow(DetailSheetState())
     private val _searchQuery = MutableStateFlow("")
-    private val _forecastSliderValue = MutableStateFlow(0.5f)
-    private val _isUpdatingForecast = MutableStateFlow(false)
     private val _isInitialLoad = MutableStateFlow(true)
     private val _hasMore = MutableStateFlow(false)
     private val _isLoadingMore = MutableStateFlow(false)
@@ -73,8 +89,8 @@ class FeedViewModel @Inject constructor(
             else questions.filter { it.title.contains(query, ignoreCase = true) }
         }
         combine(
-            questionsFlow, _isRefreshing, _error, _resolveTarget, _isResolving, _detailTarget,
-            _forecastSliderValue, _isUpdatingForecast, _isInitialLoad, _hasMore, _isLoadingMore,
+            questionsFlow, _isRefreshing, _error, _resolveTarget, _isResolving,
+            _detail, _isInitialLoad, _hasMore, _isLoadingMore,
         ) { args ->
             @Suppress("UNCHECKED_CAST")
             FeedUiState(
@@ -84,13 +100,11 @@ class FeedViewModel @Inject constructor(
                 error = args[2] as FeedError?,
                 resolveTarget = args[3] as Question?,
                 isResolving = args[4] as Boolean,
-                detailTarget = args[5] as Question?,
+                detail = args[5] as DetailSheetState,
                 searchQuery = query,
-                forecastSliderValue = args[6] as Float,
-                isUpdatingForecast = args[7] as Boolean,
-                isInitialLoad = args[8] as Boolean,
-                hasMore = args[9] as Boolean,
-                isLoadingMore = args[10] as Boolean,
+                isInitialLoad = args[6] as Boolean,
+                hasMore = args[7] as Boolean,
+                isLoadingMore = args[8] as Boolean,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FeedUiState())
@@ -141,30 +155,195 @@ class FeedViewModel @Inject constructor(
     // --- Detail sheet ---
 
     fun showDetailSheet(question: Question) {
-        _detailTarget.value = question
-        _forecastSliderValue.value = question.yourLatestForecast?.toFloat() ?: 0.5f
+        _detail.value = DetailSheetState(
+            question = question,
+            forecastSliderValue = question.yourLatestForecast?.toFloat() ?: 0.5f,
+            comments = question.comments,
+        )
+        // Enrich with full data (comments, visibility state) from API
+        viewModelScope.launch {
+            _detail.update { it.copy(isLoadingComments = true) }
+            try {
+                val full = repository.getQuestion(question.id)
+                _detail.update {
+                    it.copy(
+                        question = full,
+                        comments = full.comments,
+                        isLoadingComments = false,
+                    )
+                }
+            } catch (_: Exception) {
+                _detail.update { it.copy(isLoadingComments = false) }
+            }
+        }
     }
 
     fun dismissDetailSheet() {
-        _detailTarget.value = null
+        _detail.value = DetailSheetState()
     }
 
     fun setForecastSliderValue(value: Float) {
-        _forecastSliderValue.value = value
+        _detail.update { it.copy(forecastSliderValue = value) }
     }
 
     fun updateForecast() {
-        val question = _detailTarget.value ?: return
+        val question = _detail.value.question ?: return
         viewModelScope.launch {
-            _isUpdatingForecast.value = true
+            _detail.update { it.copy(isUpdatingForecast = true) }
             _error.value = null
             try {
-                repository.addForecast(question.id, _forecastSliderValue.value.toDouble())
-                _detailTarget.value = null // close sheet on success
+                repository.addForecast(question.id, _detail.value.forecastSliderValue.toDouble())
+                _detail.value = DetailSheetState() // close sheet on success
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to update forecast")
             } finally {
-                _isUpdatingForecast.value = false
+                _detail.update { it.copy(isUpdatingForecast = false) }
+            }
+        }
+    }
+
+    // --- Edit ---
+
+    fun enterEditMode() {
+        val question = _detail.value.question ?: return
+        _detail.update {
+            it.copy(
+                isEditing = true,
+                editTitle = question.title,
+                editResolveBy = question.resolveBy
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDate(),
+                editNotes = question.notes ?: "",
+            )
+        }
+    }
+
+    fun cancelEdit() {
+        _detail.update {
+            it.copy(isEditing = false, editTitle = "", editNotes = "", editResolveBy = null)
+        }
+    }
+
+    fun setEditTitle(title: String) {
+        _detail.update { it.copy(editTitle = title) }
+    }
+
+    fun setEditResolveBy(date: LocalDate) {
+        _detail.update { it.copy(editResolveBy = date) }
+    }
+
+    fun setEditNotes(notes: String) {
+        _detail.update { it.copy(editNotes = notes) }
+    }
+
+    fun saveEdit() {
+        val question = _detail.value.question ?: return
+        val state = _detail.value
+        viewModelScope.launch {
+            _detail.update { it.copy(isSaving = true) }
+            _error.value = null
+            try {
+                repository.editQuestion(
+                    questionId = question.id,
+                    title = state.editTitle.takeIf { it != question.title },
+                    resolveBy = state.editResolveBy,
+                    notes = state.editNotes.takeIf { it != (question.notes ?: "") },
+                )
+                _detail.value = DetailSheetState() // close sheet on success
+            } catch (e: Exception) {
+                _error.value = classifyError(e, "Failed to save changes")
+                _detail.update { it.copy(isSaving = false) }
+            }
+        }
+    }
+
+    // --- Delete ---
+
+    fun requestDelete() {
+        _detail.update { it.copy(showDeleteConfirmation = true) }
+    }
+
+    fun dismissDeleteConfirmation() {
+        _detail.update { it.copy(showDeleteConfirmation = false) }
+    }
+
+    fun confirmDelete() {
+        val question = _detail.value.question ?: return
+        viewModelScope.launch {
+            _detail.update { it.copy(isDeleting = true, showDeleteConfirmation = false) }
+            _error.value = null
+            try {
+                repository.deleteQuestion(question.id)
+                _detail.value = DetailSheetState() // close sheet
+            } catch (e: Exception) {
+                _error.value = classifyError(e, "Failed to delete question")
+                _detail.update { it.copy(isDeleting = false) }
+            }
+        }
+    }
+
+    // --- Comments ---
+
+    fun setCommentText(text: String) {
+        _detail.update { it.copy(commentText = text) }
+    }
+
+    fun addComment() {
+        val question = _detail.value.question ?: return
+        val text = _detail.value.commentText.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch {
+            _detail.update { it.copy(isAddingComment = true) }
+            _error.value = null
+            try {
+                val updated = repository.addComment(question.id, text)
+                _detail.update {
+                    it.copy(
+                        question = updated,
+                        comments = updated.comments,
+                        commentText = "",
+                        isAddingComment = false,
+                    )
+                }
+            } catch (e: Exception) {
+                _error.value = classifyError(e, "Failed to add comment")
+                _detail.update { it.copy(isAddingComment = false) }
+            }
+        }
+    }
+
+    // --- Share / Visibility ---
+
+    fun toggleSharedPublicly() {
+        val question = _detail.value.question ?: return
+        viewModelScope.launch {
+            _error.value = null
+            try {
+                val newShared = !question.sharedPublicly
+                repository.setSharedPublicly(question.id, newShared, question.unlisted)
+                _detail.update {
+                    it.copy(
+                        question = question.copy(sharedPublicly = newShared),
+                    )
+                }
+            } catch (e: Exception) {
+                _error.value = classifyError(e, "Failed to update sharing")
+            }
+        }
+    }
+
+    // --- Deep links ---
+
+    fun openDeepLinkedQuestion(questionId: String) {
+        viewModelScope.launch {
+            _error.value = null
+            try {
+                // Try local cache first, fall back to API
+                val question = repository.getCachedQuestion(questionId)
+                    ?: repository.getQuestion(questionId)
+                showDetailSheet(question)
+            } catch (e: Exception) {
+                _error.value = classifyError(e, "Failed to load question")
             }
         }
     }

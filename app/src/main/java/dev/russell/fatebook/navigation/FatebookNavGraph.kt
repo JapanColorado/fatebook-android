@@ -15,6 +15,7 @@ import dev.russell.fatebook.ui.settings.SettingsScreen
 fun FatebookNavGraph(
     userPreferences: UserPreferences,
     openCreate: Boolean = false,
+    deepLinkQuestionId: String? = null,
 ) {
     val navController = rememberNavController()
     val startDestination = if (userPreferences.hasApiKey) Routes.FEED else Routes.SETTINGS
@@ -31,6 +32,7 @@ fun FatebookNavGraph(
                 onCreateClick = { navController.navigate(Routes.CREATE) },
                 onSettingsClick = { navController.navigate(Routes.SETTINGS) },
                 onAnalyticsClick = { navController.navigate(Routes.ANALYTICS) },
+                deepLinkQuestionId = deepLinkQuestionId,
             )
         }
 

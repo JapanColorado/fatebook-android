@@ -1,6 +1,7 @@
 package dev.russell.fatebook.testutil
 
 import dev.russell.fatebook.data.remote.FatebookApi
+import dev.russell.fatebook.data.remote.dto.QuestionDto
 import dev.russell.fatebook.data.remote.dto.QuestionsResponseDto
 
 class FakeFatebookApi : FatebookApi {
@@ -12,11 +13,35 @@ class FakeFatebookApi : FatebookApi {
     var resolveQuestionError: Exception? = null
     var addForecastError: Exception? = null
     var validateApiKeyError: Exception? = null
+    var getQuestionResponse: QuestionDto = TestData.questionDto()
+    var getQuestionError: Exception? = null
+    var editQuestionError: Exception? = null
+    var deleteQuestionError: Exception? = null
+    var addCommentError: Exception? = null
+    var setSharedPubliclyError: Exception? = null
 
     val getQuestionsCalls = mutableListOf<Int?>()
     val createQuestionCalls = mutableListOf<Triple<String, String, Double>>()
     val resolveQuestionCalls = mutableListOf<Triple<String, String, String>>()
     val addForecastCalls = mutableListOf<Triple<String, Double, String>>()
+    val getQuestionCalls = mutableListOf<String>()
+    val editQuestionCalls = mutableListOf<EditQuestionCall>()
+    val deleteQuestionCalls = mutableListOf<String>()
+    val addCommentCalls = mutableListOf<Pair<String, String>>()
+    val setSharedPubliclyCalls = mutableListOf<SetSharedPubliclyCall>()
+
+    data class EditQuestionCall(
+        val questionId: String,
+        val title: String?,
+        val resolveBy: String?,
+        val notes: String?,
+    )
+
+    data class SetSharedPubliclyCall(
+        val questionId: String,
+        val sharedPublicly: Boolean,
+        val unlisted: Boolean,
+    )
 
     override suspend fun getQuestions(
         limit: Int,
@@ -63,5 +88,46 @@ class FakeFatebookApi : FatebookApi {
     override suspend fun validateApiKey(limit: Int): QuestionsResponseDto {
         validateApiKeyError?.let { throw it }
         return TestData.questionsResponse()
+    }
+
+    override suspend fun getQuestion(questionId: String): QuestionDto {
+        getQuestionError?.let { throw it }
+        getQuestionCalls.add(questionId)
+        return getQuestionResponse
+    }
+
+    override suspend fun editQuestion(
+        questionId: String,
+        title: String?,
+        resolveBy: String?,
+        notes: String?,
+        apiKey: String,
+    ) {
+        editQuestionError?.let { throw it }
+        editQuestionCalls.add(EditQuestionCall(questionId, title, resolveBy, notes))
+    }
+
+    override suspend fun deleteQuestion(questionId: String, apiKey: String) {
+        deleteQuestionError?.let { throw it }
+        deleteQuestionCalls.add(questionId)
+    }
+
+    override suspend fun addComment(
+        questionId: String,
+        comment: String,
+        apiKey: String,
+    ) {
+        addCommentError?.let { throw it }
+        addCommentCalls.add(questionId to comment)
+    }
+
+    override suspend fun setSharedPublicly(
+        questionId: String,
+        sharedPublicly: Boolean,
+        unlisted: Boolean,
+        apiKey: String,
+    ) {
+        setSharedPubliclyError?.let { throw it }
+        setSharedPubliclyCalls.add(SetSharedPubliclyCall(questionId, sharedPublicly, unlisted))
     }
 }

@@ -35,4 +35,7 @@ interface QuestionDao {
 
     @Query("DELETE FROM questions WHERE id = :questionId")
     suspend fun deleteById(questionId: String)
+
+    @Query("SELECT * FROM questions WHERE id = :questionId")
+    suspend fun getById(questionId: String): QuestionEntity?
 }

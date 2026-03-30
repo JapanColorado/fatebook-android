@@ -21,7 +21,7 @@ pixi run lint                   # ./gradlew lintDebug
 
 Do NOT run `./gradlew` directly — it will fail because the system JDK is incomplete. Always use `pixi run`.
 
-Android SDK location: `~/Android/Sdk`
+Android SDK location: `/usr/lib/android-sdk`
 
 ## Architecture
 
@@ -47,6 +47,8 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 - API dates default to midnight UTC — `QuestionRepository.parseInstant()` handles both ISO 8601 and YYYY-MM-DD
 - Scalars converter must be registered before Moshi in Retrofit (see `NetworkModule`)
 - The API returns `type` for question type but the resolve endpoint expects `questionType` as input — these are **different field names** for the same concept
+- `editQuestion` and `setSharedPublicly` use PATCH; `deleteQuestion` uses DELETE — Retrofit `@HTTP` annotation handles these (not `@FormUrlEncoded @POST`)
+- `getQuestion` returns a single `QuestionDto` (not wrapped in an envelope) — used for deep links and enriching the detail sheet with comments
 
 ## Testing
 
@@ -72,7 +74,7 @@ dev.russell.fatebook/
 ├── data/local/          # Room database, DAOs (QuestionDao, ForecastDao), entities
 ├── data/preferences/    # EncryptedSharedPrefs + DataStore
 ├── data/repository/     # QuestionRepository (offline-first)
-├── domain/model/        # Question, Forecast, Resolution
+├── domain/model/        # Question, Forecast, Comment, Resolution
 ├── ui/theme/            # Material3 theme, colors, typography
 ├── ui/components/       # QuestionCard, ProbabilitySlider, DatePickerField, ShimmerQuestionCard, ErrorBanner
 ├── ui/feed/             # FeedScreen + FeedScreenContent + FeedViewModel
@@ -92,7 +94,8 @@ dev.russell.fatebook/
 - **Question feed**: LazyColumn with filter chips (Active / Ready to Resolve / Resolved), pull-to-refresh, search bar, empty states, shimmer skeleton loading, cursor-based pagination with infinite scroll
 - **Quick create**: Title field (auto-capitalized), date picker (default: tomorrow), probability slider with quick-set chips (10/25/50/75/90%)
 - **Resolve flow**: Bottom sheet with YES (green) / NO (red) / Ambiguous buttons, loading indicator, error surfacing via error banner. Resolve state lives in `FeedViewModel`.
-- **Question detail**: Tapping non-resolvable cards opens a detail bottom sheet (title, dates, forecast, resolution, "Open in Fatebook" link). Active questions show ProbabilitySlider + "Update Forecast" button to add a new forecast.
+- **Question detail**: Tapping non-resolvable cards opens a detail bottom sheet (title, dates, notes, forecast, resolution, comments, "Open in Fatebook" link). Active questions show ProbabilitySlider + "Update Forecast" button. Action row provides Edit (pencil), Delete (trash with confirmation dialog), Share (Android share intent), and Visibility toggle (public/private via API). Edit mode replaces read-only fields with editable TextFields + DatePicker. Comments section shows existing comments and allows adding new ones via API.
+- **Deep links**: Intent filter for `https://fatebook.io/q/*` URLs. Parses question slug from URL, fetches via `getQuestion` API, and opens the detail sheet. Handles both cold-start and in-app navigation via `onNewIntent`.
 - **hideForecastsUntil**: Forecasts with a future `hideForecastsUntil` date show "Hidden" in the card and "Forecast hidden until [date]" in the detail sheet
 - **Smart notification**: WorkManager daily task, only fires if no prediction made today. Tapping notification navigates to Create screen. Both `createQuestion` and `addForecast` update the last prediction date.
 - **Error handling**: Network errors (IOException) show a persistent `ErrorBanner` with retry button; other errors also use the banner with dismiss option.

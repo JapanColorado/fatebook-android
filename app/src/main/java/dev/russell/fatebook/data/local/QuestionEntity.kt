@@ -16,4 +16,7 @@ data class QuestionEntity(
     val url: String,
     val forecastHiddenUntilEpochMs: Long? = null,
     val lastSyncedEpochMs: Long = System.currentTimeMillis(),
+    val notes: String? = null,
+    val sharedPublicly: Boolean = false,
+    val unlisted: Boolean = false,
 )

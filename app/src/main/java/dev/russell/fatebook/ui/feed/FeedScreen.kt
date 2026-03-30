@@ -58,9 +58,17 @@ fun FeedScreen(
     onCreateClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onAnalyticsClick: () -> Unit,
+    deepLinkQuestionId: String? = null,
     viewModel: FeedViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Handle deep link
+    LaunchedEffect(deepLinkQuestionId) {
+        if (deepLinkQuestionId != null) {
+            viewModel.openDeepLinkedQuestion(deepLinkQuestionId)
+        }
+    }
 
     FeedScreenContent(
         state = state,
@@ -84,6 +92,18 @@ fun FeedScreen(
         onUpdateForecast = viewModel::updateForecast,
         onDismissDetailSheet = viewModel::dismissDetailSheet,
         onDismissError = viewModel::dismissError,
+        onEnterEditMode = viewModel::enterEditMode,
+        onEditTitleChange = viewModel::setEditTitle,
+        onEditResolveByChange = viewModel::setEditResolveBy,
+        onEditNotesChange = viewModel::setEditNotes,
+        onSaveEdit = viewModel::saveEdit,
+        onCancelEdit = viewModel::cancelEdit,
+        onDeleteClick = viewModel::requestDelete,
+        onConfirmDelete = viewModel::confirmDelete,
+        onDismissDeleteConfirmation = viewModel::dismissDeleteConfirmation,
+        onCommentTextChange = viewModel::setCommentText,
+        onAddComment = viewModel::addComment,
+        onToggleSharedPublicly = viewModel::toggleSharedPublicly,
     )
 }
 
@@ -105,6 +125,18 @@ fun FeedScreenContent(
     onUpdateForecast: () -> Unit = {},
     onDismissDetailSheet: () -> Unit = {},
     onDismissError: () -> Unit = {},
+    onEnterEditMode: () -> Unit = {},
+    onEditTitleChange: (String) -> Unit = {},
+    onEditResolveByChange: (java.time.LocalDate) -> Unit = {},
+    onEditNotesChange: (String) -> Unit = {},
+    onSaveEdit: () -> Unit = {},
+    onCancelEdit: () -> Unit = {},
+    onDeleteClick: () -> Unit = {},
+    onConfirmDelete: () -> Unit = {},
+    onDismissDeleteConfirmation: () -> Unit = {},
+    onCommentTextChange: (String) -> Unit = {},
+    onAddComment: () -> Unit = {},
+    onToggleSharedPublicly: () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -275,13 +307,24 @@ fun FeedScreenContent(
     }
 
     // Detail bottom sheet
-    state.detailTarget?.let { question ->
+    state.detail.question?.let { question ->
         QuestionDetailSheet(
             question = question,
-            forecastSliderValue = state.forecastSliderValue,
-            isUpdatingForecast = state.isUpdatingForecast,
+            detailState = state.detail,
             onForecastSliderChange = onForecastSliderChange,
             onUpdateForecast = onUpdateForecast,
+            onEnterEditMode = onEnterEditMode,
+            onEditTitleChange = onEditTitleChange,
+            onEditResolveByChange = onEditResolveByChange,
+            onEditNotesChange = onEditNotesChange,
+            onSaveEdit = onSaveEdit,
+            onCancelEdit = onCancelEdit,
+            onDeleteClick = onDeleteClick,
+            onConfirmDelete = onConfirmDelete,
+            onDismissDeleteConfirmation = onDismissDeleteConfirmation,
+            onCommentTextChange = onCommentTextChange,
+            onAddComment = onAddComment,
+            onToggleSharedPublicly = onToggleSharedPublicly,
             onDismiss = onDismissDetailSheet,
         )
     }

@@ -15,6 +15,10 @@ data class Question(
     val forecasts: List<Forecast>,
     val url: String,
     val forecastHiddenUntil: Instant? = null,
+    val notes: String? = null,
+    val sharedPublicly: Boolean = false,
+    val unlisted: Boolean = false,
+    val comments: List<Comment> = emptyList(),
 ) {
     val isReadyToResolve: Boolean
         get() = !resolved && !Instant.now().isBefore(resolveBy)
@@ -29,5 +33,12 @@ data class Question(
 data class Forecast(
     val userId: String,
     val forecast: Double?,
+    val createdAt: Instant,
+)
+
+data class Comment(
+    val id: String,
+    val userId: String,
+    val comment: String,
     val createdAt: Instant,
 )

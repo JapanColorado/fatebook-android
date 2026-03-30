@@ -2,24 +2,31 @@
 
 ## Bugs
 
-- [ ] Resolves today shown as 22 hr overdue
+- 400 Error when deleting question
+- Public/Private text should be under eye icon in card
+- Open in Fatebook button should be the Fatebook logo in a circle with the edit, delete, share, and publicity icons.
+- Resolve card should be the same as the forecast card, just with the resolve buttons replacing the update forecast slider and buttons.
+- "required value 'id' missing at $" error when adding a comment.
+- Resolves in forecast card should be Resolved when the date is in the past.
+- All dates have off by one errors—simplify date set up so that resolution happens on a certain day, defaulting to tomorrow. Use local time zone.
 
 ## Feature Ideas
 
 - [ ] Tags/categories for organizing predictions by domain
 - [ ] Quick-forecast templates (pre-filled question patterns for recurring prediction types)
 - [ ] Home screen widget for quick-create
-- [ ] Fatebook tournament support
-- [ ] Add comments to questions
-- [ ] Edit question title/resolveBy/notes
-- [ ] Delete questions
-- [ ] Share questions publicly / toggle visibility
-- [ ] Deep link support (open fatebook.io question URLs in app)
-- [ ] Github Claude Code?
 
 ---
 
 ## Archive
+
+### v0.3 -- Question Management & Deep Links
+- [x] Fix: "Resolves today" shown as 22 hr overdue (compare dates at day level, not instant level)
+- [x] Add comments to questions (via API addComment endpoint)
+- [x] Edit question title/resolveBy/notes (via API editQuestion endpoint)
+- [x] Delete questions (via API deleteQuestion endpoint, with confirmation dialog)
+- [x] Share questions publicly / toggle visibility (Android share intent + API setSharedPublicly)
+- [x] Deep link support (open fatebook.io/q/* URLs in app)
 
 ### General
 - [x] Date selector shouldn't be dim-grayed out in prediction card if you selected a different date than that day.

@@ -7,6 +7,7 @@ import dev.russell.fatebook.data.local.QuestionEntity
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.FatebookApi
 import dev.russell.fatebook.data.remote.dto.QuestionDto
+import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Forecast
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.Resolution
@@ -128,6 +129,66 @@ class QuestionRepository @Inject constructor(
         }
     }
 
+    /** Fetch a single question by ID (for deep links and enriching detail view). */
+    suspend fun getQuestion(questionId: String): Question {
+        val dto = api.getQuestion(questionId)
+        return dto.toDomain()
+    }
+
+    /** Edit question fields. Only non-null params are sent to the API. */
+    suspend fun editQuestion(
+        questionId: String,
+        title: String? = null,
+        resolveBy: LocalDate? = null,
+        notes: String? = null,
+    ) {
+        val apiKey = prefs.apiKey ?: error("No API key configured")
+        api.editQuestion(
+            questionId = questionId,
+            title = title,
+            resolveBy = resolveBy?.format(DateTimeFormatter.ISO_LOCAL_DATE),
+            notes = notes,
+            apiKey = apiKey,
+        )
+        refresh()
+    }
+
+    /** Delete a question. */
+    suspend fun deleteQuestion(questionId: String) {
+        val apiKey = prefs.apiKey ?: error("No API key configured")
+        api.deleteQuestion(questionId = questionId, apiKey = apiKey)
+        dao.deleteById(questionId)
+    }
+
+    /** Add a comment to a question. Returns the updated question with comments. */
+    suspend fun addComment(questionId: String, comment: String): Question {
+        val apiKey = prefs.apiKey ?: error("No API key configured")
+        api.addComment(questionId = questionId, comment = comment, apiKey = apiKey)
+        // Re-fetch the question to get updated comments list
+        return getQuestion(questionId)
+    }
+
+    /** Toggle public visibility of a question. */
+    suspend fun setSharedPublicly(
+        questionId: String,
+        sharedPublicly: Boolean,
+        unlisted: Boolean,
+    ) {
+        val apiKey = prefs.apiKey ?: error("No API key configured")
+        api.setSharedPublicly(
+            questionId = questionId,
+            sharedPublicly = sharedPublicly,
+            unlisted = unlisted,
+            apiKey = apiKey,
+        )
+        refresh()
+    }
+
+    /** Look up a question in the local cache by ID. */
+    suspend fun getCachedQuestion(questionId: String): Question? {
+        return dao.getById(questionId)?.toDomain()
+    }
+
     // --- Mappers ---
 
     private fun QuestionDto.toEntity(): QuestionEntity {
@@ -148,6 +209,9 @@ class QuestionRepository @Inject constructor(
             forecastHiddenUntilEpochMs = latest?.hideForecastsUntil?.let {
                 try { parseInstant(it).toEpochMilli() } catch (_: Exception) { null }
             },
+            notes = notes,
+            sharedPublicly = sharedPublicly ?: false,
+            unlisted = unlisted ?: false,
         )
     }
 
@@ -187,6 +251,18 @@ class QuestionRepository @Inject constructor(
             forecastHiddenUntil = latest?.hideForecastsUntil?.let {
                 try { parseInstant(it) } catch (_: Exception) { null }
             },
+            notes = notes,
+            sharedPublicly = sharedPublicly ?: false,
+            unlisted = unlisted ?: false,
+            comments = comments?.mapNotNull { dto ->
+                if (dto.comment == null) null
+                else Comment(
+                    id = dto.id ?: "",
+                    userId = dto.userId ?: "",
+                    comment = dto.comment,
+                    createdAt = dto.createdAt?.let { parseInstant(it) } ?: Instant.EPOCH,
+                )
+            } ?: emptyList(),
         )
     }
 
@@ -203,6 +279,10 @@ class QuestionRepository @Inject constructor(
             forecasts = emptyList(), // Not stored locally
             url = url,
             forecastHiddenUntil = forecastHiddenUntilEpochMs?.let { Instant.ofEpochMilli(it) },
+            notes = notes,
+            sharedPublicly = sharedPublicly,
+            unlisted = unlisted,
+            // Comments not cached locally — fetched on-demand via getQuestion()
         )
     }
 

@@ -24,8 +24,10 @@ import dev.russell.fatebook.ui.theme.ResolveYes
 import dev.russell.fatebook.ui.theme.forecastColor
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 @Composable
 fun QuestionCard(
@@ -132,22 +134,17 @@ private fun absoluteDate(instant: Instant): String =
         .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
 
 private fun relativeDate(instant: Instant): String {
-    val now = Instant.now()
-    val duration = Duration.between(now, instant)
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now(zone)
+    val targetDate = instant.atZone(zone).toLocalDate()
+    val daysDiff = ChronoUnit.DAYS.between(today, targetDate)
     return when {
-        duration.isNegative -> {
-            val ago = duration.abs()
-            when {
-                ago.toDays() > 0 -> "${ago.toDays()}d overdue"
-                ago.toHours() > 0 -> "${ago.toHours()}h overdue"
-                else -> "just now"
-            }
-        }
-        duration.toDays() == 0L -> "today"
-        duration.toDays() == 1L -> "tomorrow"
-        duration.toDays() < 7 -> "in ${duration.toDays()}d"
-        duration.toDays() < 30 -> "in ${duration.toDays() / 7}w"
-        else -> instant.atZone(ZoneId.systemDefault())
-            .format(DateTimeFormatter.ofPattern("MMM d"))
+        daysDiff < -1 -> "${-daysDiff}d overdue"
+        daysDiff == -1L -> "1d overdue"
+        daysDiff == 0L -> "today"
+        daysDiff == 1L -> "tomorrow"
+        daysDiff < 7 -> "in ${daysDiff}d"
+        daysDiff < 30 -> "in ${daysDiff / 7}w"
+        else -> instant.atZone(zone).format(DateTimeFormatter.ofPattern("MMM d"))
     }
 }

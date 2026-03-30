@@ -1,9 +1,11 @@
 package dev.russell.fatebook.data.remote
 
 import dev.russell.fatebook.data.remote.dto.QuestionsResponseDto
+import dev.russell.fatebook.data.remote.dto.QuestionDto
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.POST
 import retrofit2.http.Query
 
@@ -61,4 +63,48 @@ interface FatebookApi {
     suspend fun validateApiKey(
         @Query("limit") limit: Int = 1,
     ): QuestionsResponseDto
+
+    /** Fetch a single question by ID (for deep links and enriching detail view). */
+    @GET("getQuestion")
+    suspend fun getQuestion(
+        @Query("questionId") questionId: String,
+    ): QuestionDto
+
+    /** Edit question fields (title, resolveBy, notes). */
+    @FormUrlEncoded
+    @HTTP(method = "PATCH", path = "editQuestion", hasBody = true)
+    suspend fun editQuestion(
+        @Field("questionId") questionId: String,
+        @Field("title") title: String? = null,
+        @Field("resolveBy") resolveBy: String? = null,
+        @Field("notes") notes: String? = null,
+        @Field("apiKey") apiKey: String,
+    )
+
+    /** Delete a question. */
+    @FormUrlEncoded
+    @HTTP(method = "DELETE", path = "deleteQuestion", hasBody = true)
+    suspend fun deleteQuestion(
+        @Field("questionId") questionId: String,
+        @Field("apiKey") apiKey: String,
+    )
+
+    /** Add a comment to a question. */
+    @FormUrlEncoded
+    @POST("addComment")
+    suspend fun addComment(
+        @Field("questionId") questionId: String,
+        @Field("comment") comment: String,
+        @Field("apiKey") apiKey: String,
+    )
+
+    /** Toggle public visibility of a question. */
+    @FormUrlEncoded
+    @HTTP(method = "PATCH", path = "setSharedPublicly", hasBody = true)
+    suspend fun setSharedPublicly(
+        @Field("questionId") questionId: String,
+        @Field("sharedPublicly") sharedPublicly: Boolean,
+        @Field("unlisted") unlisted: Boolean,
+        @Field("apiKey") apiKey: String,
+    )
 }

@@ -52,4 +52,8 @@ class FakeQuestionDao : QuestionDao {
     override suspend fun deleteById(questionId: String) {
         _questions.value = _questions.value.filter { it.id != questionId }
     }
+
+    override suspend fun getById(questionId: String): QuestionEntity? {
+        return _questions.value.find { it.id == questionId }
+    }
 }

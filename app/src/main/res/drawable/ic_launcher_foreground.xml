@@ -4,9 +4,21 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Bell curve (Gaussian distribution) — probability/forecasting motif -->
-    <!-- Curve sits within the 72dp safe zone (18–90) -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M22,76 C28,76 33,74 38,68 C43,62 46,48 50,38 C52,32 54,32 54,38 C58,48 61,62 66,68 C71,74 76,76 86,76 L86,80 L22,80 Z"/>
+    <!-- Scales of justice — prediction/judgment motif -->
+    <!-- Path scaled 3x and translated +18,+18 to fit 72dp safe zone (18–90) -->
+    <group
+        android:scaleX="3"
+        android:scaleY="3"
+        android:translateX="18"
+        android:translateY="18"
+        android:pivotX="0"
+        android:pivotY="0">
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000"
+            android:pathData="M12,3v17.25m0,0c-1.472,0 -2.882,0.265 -4.185,0.75M12,20.25c1.472,0 2.882,0.265 4.185,0.75M18.75,4.97A48.416,48.416,0,0,0,12,4.5c-2.291,0 -4.545,0.16 -6.75,0.47m13.5,0c1.01,0.143 2.01,0.317 3,0.52m-3,-0.52l2.62,10.726c0.122,0.499 -0.106,1.028 -0.589,1.202a5.988,5.988,0,0,1,-2.031,0.352a5.988,5.988,0,0,1,-2.031,-0.352c-0.483,-0.174 -0.711,-0.703 -0.59,-1.202L18.75,4.971ZM2.25,5.49c0.99,-0.203 1.99,-0.377 3,-0.52m0,0l2.62,10.726c0.122,0.499 -0.106,1.028 -0.589,1.202a5.989,5.989,0,0,1,-2.031,0.352a5.989,5.989,0,0,1,-2.031,-0.352c-0.483,-0.174 -0.711,-0.703 -0.59,-1.202L5.25,4.971Z"/>
+    </group>
 </vector>

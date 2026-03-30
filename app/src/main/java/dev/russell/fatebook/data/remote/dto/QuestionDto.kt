@@ -21,6 +21,9 @@ data class QuestionDto(
     val forecasts: List<ForecastDto>?,
     val notes: String?,
     @Json(name = "type") val questionType: String? = null,
+    val sharedPublicly: Boolean? = null,
+    val unlisted: Boolean? = null,
+    val comments: List<CommentDto>? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -29,6 +32,14 @@ data class ForecastDto(
     val forecast: Double?,
     @Json(name = "createdAt") val createdAt: String?,
     val hideForecastsUntil: String?,
+)
+
+@JsonClass(generateAdapter = true)
+data class CommentDto(
+    val id: String?,
+    val userId: String?,
+    val comment: String?,
+    @Json(name = "createdAt") val createdAt: String?,
 )
 
 @JsonClass(generateAdapter = true)

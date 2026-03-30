@@ -36,6 +36,11 @@ class FeedViewModelTest {
         coEvery { repository.observeReadyToResolve() } returns flowOf(emptyList())
         coEvery { repository.refresh() } returns emptyList()
         every { repository.hasMore() } returns false
+        // Default: getQuestion returns the same question passed to showDetailSheet
+        coEvery { repository.getQuestion(any()) } answers {
+            TestData.question(id = firstArg())
+        }
+        coEvery { repository.getCachedQuestion(any()) } returns null
     }
 
     @After
@@ -188,6 +193,7 @@ class FeedViewModelTest {
     @Test
     fun `showDetailSheet sets target and initializes slider`() = runTest {
         val question = TestData.question(yourLatestForecast = 0.8)
+        coEvery { repository.getQuestion(question.id) } returns question
 
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -198,13 +204,14 @@ class FeedViewModelTest {
         vm.showDetailSheet(question)
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detailTarget).isEqualTo(question)
-        assertThat(vm.uiState.value.forecastSliderValue).isEqualTo(0.8f)
+        assertThat(vm.uiState.value.detail.question?.id).isEqualTo(question.id)
+        assertThat(vm.uiState.value.detail.forecastSliderValue).isEqualTo(0.8f)
     }
 
     @Test
     fun `showDetailSheet defaults slider to 0_5 when no forecast`() = runTest {
         val question = TestData.question(yourLatestForecast = null)
+        coEvery { repository.getQuestion(question.id) } returns question
 
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -215,7 +222,7 @@ class FeedViewModelTest {
         vm.showDetailSheet(question)
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.forecastSliderValue).isEqualTo(0.5f)
+        assertThat(vm.uiState.value.detail.forecastSliderValue).isEqualTo(0.5f)
     }
 
     @Test
@@ -231,7 +238,7 @@ class FeedViewModelTest {
         vm.dismissDetailSheet()
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detailTarget).isNull()
+        assertThat(vm.uiState.value.detail.question).isNull()
     }
 
     @Test
@@ -250,7 +257,7 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         coVerify { repository.addForecast("q1", any()) }
-        assertThat(vm.uiState.value.detailTarget).isNull()
+        assertThat(vm.uiState.value.detail.question).isNull()
     }
 
     @Test
@@ -327,5 +334,167 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         assertThat(vm.uiState.value.error).isNull()
+    }
+
+    // --- New feature tests ---
+
+    @Test
+    fun `confirmDelete calls repository and closes sheet`() = runTest {
+        val question = TestData.question(id = "q1")
+        coEvery { repository.getQuestion("q1") } returns question
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.confirmDelete()
+        advanceUntilIdle()
+
+        coVerify { repository.deleteQuestion("q1") }
+        assertThat(vm.uiState.value.detail.question).isNull()
+    }
+
+    @Test
+    fun `confirmDelete sets error on failure`() = runTest {
+        val question = TestData.question(id = "q1")
+        coEvery { repository.getQuestion("q1") } returns question
+        coEvery { repository.deleteQuestion(any()) } throws RuntimeException("Forbidden")
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.confirmDelete()
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.error).isNotNull()
+        assertThat(vm.uiState.value.detail.isDeleting).isFalse()
+    }
+
+    @Test
+    fun `requestDelete shows confirmation dialog`() = runTest {
+        val question = TestData.question(id = "q1")
+        coEvery { repository.getQuestion("q1") } returns question
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.requestDelete()
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.detail.showDeleteConfirmation).isTrue()
+    }
+
+    @Test
+    fun `enterEditMode populates edit fields`() = runTest {
+        val question = TestData.question(id = "q1", title = "Test question")
+        coEvery { repository.getQuestion("q1") } returns question
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.enterEditMode()
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.detail.isEditing).isTrue()
+        assertThat(vm.uiState.value.detail.editTitle).isEqualTo("Test question")
+    }
+
+    @Test
+    fun `saveEdit calls repository and closes sheet`() = runTest {
+        val question = TestData.question(id = "q1", title = "Old title")
+        coEvery { repository.getQuestion("q1") } returns question
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.enterEditMode()
+        vm.setEditTitle("New title")
+        vm.saveEdit()
+        advanceUntilIdle()
+
+        coVerify { repository.editQuestion(questionId = "q1", title = "New title", resolveBy = any(), notes = any()) }
+        assertThat(vm.uiState.value.detail.question).isNull()
+    }
+
+    @Test
+    fun `addComment calls repository and clears text`() = runTest {
+        val question = TestData.question(id = "q1")
+        coEvery { repository.getQuestion("q1") } returns question
+        coEvery { repository.addComment(any(), any()) } returns question
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.setCommentText("Great prediction!")
+        vm.addComment()
+        advanceUntilIdle()
+
+        coVerify { repository.addComment("q1", "Great prediction!") }
+        assertThat(vm.uiState.value.detail.commentText).isEmpty()
+    }
+
+    @Test
+    fun `openDeepLinkedQuestion fetches and shows detail`() = runTest {
+        val question = TestData.question(id = "deep-q1")
+        coEvery { repository.getQuestion("deep-q1") } returns question
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.openDeepLinkedQuestion("deep-q1")
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.detail.question?.id).isEqualTo("deep-q1")
+    }
+
+    @Test
+    fun `toggleSharedPublicly calls repository`() = runTest {
+        val question = TestData.question(id = "q1")
+        coEvery { repository.getQuestion("q1") } returns question
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.toggleSharedPublicly()
+        advanceUntilIdle()
+
+        coVerify { repository.setSharedPublicly("q1", true, false) }
     }
 }

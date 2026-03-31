@@ -448,6 +448,32 @@ class QuestionRepositoryTest {
         assertThat(result.isFailure).isTrue()
     }
 
+    // --- countReadyToResolve ---
+
+    @Test
+    fun `countReadyToResolve returns count of unresolved past-due questions`() = runTest {
+        val pastDue = TestData.questionEntity(
+            id = "q1",
+            resolved = false,
+            resolveByEpochMs = Instant.parse("2020-01-01T00:00:00Z").toEpochMilli(),
+        )
+        val futureDue = TestData.questionEntity(
+            id = "q2",
+            resolved = false,
+            resolveByEpochMs = Instant.parse("2099-01-01T00:00:00Z").toEpochMilli(),
+        )
+        val resolvedPastDue = TestData.questionEntity(
+            id = "q3",
+            resolved = true,
+            resolveByEpochMs = Instant.parse("2020-01-01T00:00:00Z").toEpochMilli(),
+        )
+        dao.upsertAll(listOf(pastDue, futureDue, resolvedPastDue))
+
+        val count = repository.countReadyToResolve()
+
+        assertThat(count).isEqualTo(1)
+    }
+
     // --- mapper edge cases ---
 
     @Test

@@ -9,8 +9,8 @@
 - [ ] Tags/categories for organizing predictions by domain
 - [ ] Quick-forecast templates (pre-filled question patterns for recurring prediction types)
 - [ ] Home screen widget for quick-create
-- [ ] Ready to resolve notifications
-- [ ] Fix make a daily prediction notification
+- [x] Ready to resolve notifications
+- [x] Fix make a daily prediction notification
 
 ---
 

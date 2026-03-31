@@ -24,6 +24,14 @@ interface QuestionDao {
     )
     fun observeReadyToResolve(nowEpochMs: Long): Flow<List<QuestionEntity>>
 
+    @Query(
+        """
+        SELECT COUNT(*) FROM questions
+        WHERE resolved = 0 AND resolveByEpochMs <= :nowEpochMs
+        """
+    )
+    suspend fun countReadyToResolve(nowEpochMs: Long): Int
+
     @Query("SELECT * FROM questions WHERE resolved = 1 ORDER BY resolveByEpochMs DESC")
     fun observeResolved(): Flow<List<QuestionEntity>>
 

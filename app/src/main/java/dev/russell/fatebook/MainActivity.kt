@@ -22,12 +22,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val openCreate = intent.getBooleanExtra(NotificationHelper.EXTRA_OPEN_CREATE, false)
+        val openResolveFilter = intent.getBooleanExtra(
+            NotificationHelper.EXTRA_OPEN_RESOLVE_FILTER, false,
+        )
         val deepLinkQuestionId = parseDeepLink(intent)
         setContent {
             FatebookTheme {
                 FatebookNavGraph(
                     userPreferences = userPreferences,
                     openCreate = openCreate,
+                    openResolveFilter = openResolveFilter,
                     deepLinkQuestionId = deepLinkQuestionId,
                 )
             }

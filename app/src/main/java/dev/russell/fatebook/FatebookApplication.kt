@@ -21,22 +21,30 @@ class FatebookApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        createNotificationChannels()
     }
 
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
+    private fun createNotificationChannels() {
+        val reminderChannel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
             description = getString(R.string.notification_channel_description)
         }
+        val resolveChannel = NotificationChannel(
+            RESOLVE_CHANNEL_ID,
+            getString(R.string.resolve_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = getString(R.string.resolve_channel_description)
+        }
         getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(channel)
+            .createNotificationChannels(listOf(reminderChannel, resolveChannel))
     }
 
     companion object {
         const val CHANNEL_ID = "daily_reminder"
+        const val RESOLVE_CHANNEL_ID = "ready_to_resolve"
     }
 }

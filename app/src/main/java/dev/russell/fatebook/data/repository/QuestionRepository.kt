@@ -52,6 +52,14 @@ class QuestionRepository @Inject constructor(
             .map { entities -> entities.map { it.toDomain() } }
     }
 
+    suspend fun countReadyToResolve(): Int {
+        val todayUtcMs = LocalDate.now()
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
+            .toEpochMilli()
+        return dao.countReadyToResolve(todayUtcMs)
+    }
+
     fun observeResolved(): Flow<List<Question>> =
         dao.observeResolved().map { entities -> entities.map { it.toDomain() } }
 

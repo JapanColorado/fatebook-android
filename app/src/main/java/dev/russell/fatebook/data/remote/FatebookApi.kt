@@ -81,12 +81,10 @@ interface FatebookApi {
         @Field("apiKey") apiKey: String,
     )
 
-    /** Delete a question. */
-    @FormUrlEncoded
-    @HTTP(method = "DELETE", path = "deleteQuestion", hasBody = true)
+    /** Delete a question. DELETE uses query params (like GET); apiKey added by interceptor. */
+    @HTTP(method = "DELETE", path = "deleteQuestion", hasBody = false)
     suspend fun deleteQuestion(
-        @Field("questionId") questionId: String,
-        @Field("apiKey") apiKey: String,
+        @Query("questionId") questionId: String,
     )
 
     /** Add a comment to a question. */

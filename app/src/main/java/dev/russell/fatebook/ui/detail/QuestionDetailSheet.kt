@@ -30,6 +30,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Question
+import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.ui.components.DatePickerField
 import dev.russell.fatebook.ui.components.ProbabilitySlider
 import dev.russell.fatebook.ui.feed.DetailSheetState
@@ -64,6 +66,7 @@ fun QuestionDetailSheet(
     detailState: DetailSheetState,
     onForecastSliderChange: (Float) -> Unit,
     onUpdateForecast: () -> Unit,
+    onResolve: (Resolution) -> Unit,
     onEnterEditMode: () -> Unit,
     onEditTitleChange: (String) -> Unit,
     onEditResolveByChange: (LocalDate) -> Unit,
@@ -108,6 +111,7 @@ fun QuestionDetailSheet(
                     dateFormatter = dateFormatter,
                     onForecastSliderChange = onForecastSliderChange,
                     onUpdateForecast = onUpdateForecast,
+                    onResolve = onResolve,
                     onEnterEditMode = onEnterEditMode,
                     onDeleteClick = onDeleteClick,
                     onToggleSharedPublicly = onToggleSharedPublicly,
@@ -156,6 +160,7 @@ private fun ColumnScope.ReadModeContent(
     dateFormatter: DateTimeFormatter,
     onForecastSliderChange: (Float) -> Unit,
     onUpdateForecast: () -> Unit,
+    onResolve: (Resolution) -> Unit,
     onEnterEditMode: () -> Unit,
     onDeleteClick: () -> Unit,
     onToggleSharedPublicly: () -> Unit,
@@ -174,7 +179,7 @@ private fun ColumnScope.ReadModeContent(
 
     // Resolve-by date
     Text(
-        text = "Resolves: ${question.resolveByDate.format(dateFormatter)}",
+        text = "${question.resolvesLabel}: ${question.resolveByDate.format(dateFormatter)}",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -230,8 +235,51 @@ private fun ColumnScope.ReadModeContent(
         )
     }
 
-    // Update forecast (active, non-hidden questions only)
-    if (!question.resolved && !question.isForecastHidden) {
+    // Action section: resolve buttons OR forecast slider
+    if (question.isReadyToResolve) {
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Button(
+                onClick = { onResolve(Resolution.YES) },
+                modifier = Modifier.weight(1f),
+                enabled = !detailState.isResolving,
+                colors = ButtonDefaults.buttonColors(containerColor = ResolveYes),
+            ) {
+                Text("YES", fontWeight = FontWeight.Bold)
+            }
+            Button(
+                onClick = { onResolve(Resolution.NO) },
+                modifier = Modifier.weight(1f),
+                enabled = !detailState.isResolving,
+                colors = ButtonDefaults.buttonColors(containerColor = ResolveNo),
+            ) {
+                Text("NO", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedButton(
+            onClick = { onResolve(Resolution.AMBIGUOUS) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !detailState.isResolving,
+        ) {
+            Text("Ambiguous")
+        }
+
+        if (detailState.isResolving) {
+            Spacer(modifier = Modifier.height(12.dp))
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .size(24.dp)
+                    .align(Alignment.CenterHorizontally),
+            )
+        }
+    } else if (!question.resolved && !question.isForecastHidden) {
         Spacer(modifier = Modifier.height(16.dp))
 
         ProbabilitySlider(
@@ -287,22 +335,28 @@ private fun ColumnScope.ReadModeContent(
         }) {
             Icon(Icons.Default.Share, contentDescription = "Share")
         }
-        IconButton(onClick = onToggleSharedPublicly) {
-            Icon(
-                if (question.sharedPublicly) Icons.Default.Visibility
-                else Icons.Default.VisibilityOff,
-                contentDescription = if (question.sharedPublicly) "Make private" else "Make public",
+        IconButton(onClick = {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(question.url)))
+        }) {
+            Icon(Icons.Default.OpenInNew, contentDescription = "Open in Fatebook")
+        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            IconButton(onClick = onToggleSharedPublicly) {
+                Icon(
+                    if (question.sharedPublicly) Icons.Default.Visibility
+                    else Icons.Default.VisibilityOff,
+                    contentDescription = if (question.sharedPublicly) "Make private" else "Make public",
+                )
+            }
+            Text(
+                text = if (question.sharedPublicly) "Public" else "Private",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
-
-    // Visibility label
-    Text(
-        text = if (question.sharedPublicly) "Shared publicly" else "Private",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.align(Alignment.CenterHorizontally),
-    )
 
     Spacer(modifier = Modifier.height(12.dp))
     HorizontalDivider()
@@ -364,17 +418,6 @@ private fun ColumnScope.ReadModeContent(
         }
     }
 
-    Spacer(modifier = Modifier.height(16.dp))
-
-    // Open in browser
-    OutlinedButton(
-        onClick = {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(question.url)))
-        },
-        modifier = Modifier.align(Alignment.CenterHorizontally),
-    ) {
-        Text("Open in Fatebook")
-    }
 }
 
 @Composable

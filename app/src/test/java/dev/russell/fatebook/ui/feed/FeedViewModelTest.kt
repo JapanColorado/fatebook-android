@@ -290,12 +290,13 @@ class FeedViewModelTest {
         }
         advanceUntilIdle()
 
-        vm.showResolveSheet(question)
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
         vm.resolveQuestion(Resolution.YES)
         advanceUntilIdle()
 
         coVerify { repository.resolveQuestion("q1", Resolution.YES) }
-        assertThat(vm.uiState.value.resolveTarget).isNull()
+        assertThat(vm.uiState.value.detail.question).isNull()
     }
 
     @Test
@@ -309,7 +310,8 @@ class FeedViewModelTest {
         }
         advanceUntilIdle()
 
-        vm.showResolveSheet(question)
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
         vm.resolveQuestion(Resolution.NO)
         advanceUntilIdle()
 
@@ -458,7 +460,7 @@ class FeedViewModelTest {
         vm.addComment()
         advanceUntilIdle()
 
-        coVerify { repository.addComment("q1", "Great prediction!") }
+        coVerify { repository.addComment(eq(question), eq("Great prediction!")) }
         assertThat(vm.uiState.value.detail.commentText).isEmpty()
     }
 

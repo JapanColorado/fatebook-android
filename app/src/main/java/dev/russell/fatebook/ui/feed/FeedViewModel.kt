@@ -44,6 +44,7 @@ data class DetailSheetState(
     val showDeleteConfirmation: Boolean = false,
     val isDeleting: Boolean = false,
     val isSaving: Boolean = false,
+    val isResolving: Boolean = false,
 )
 
 data class FeedUiState(
@@ -51,8 +52,6 @@ data class FeedUiState(
     val filter: FeedFilter = FeedFilter.ACTIVE,
     val isRefreshing: Boolean = false,
     val error: FeedError? = null,
-    val resolveTarget: Question? = null,
-    val isResolving: Boolean = false,
     val detail: DetailSheetState = DetailSheetState(),
     val searchQuery: String = "",
     val isInitialLoad: Boolean = true,
@@ -68,8 +67,6 @@ class FeedViewModel @Inject constructor(
     private val _filter = MutableStateFlow(FeedFilter.ACTIVE)
     private val _isRefreshing = MutableStateFlow(false)
     private val _error = MutableStateFlow<FeedError?>(null)
-    private val _resolveTarget = MutableStateFlow<Question?>(null)
-    private val _isResolving = MutableStateFlow(false)
     private val _detail = MutableStateFlow(DetailSheetState())
     private val _searchQuery = MutableStateFlow("")
     private val _isInitialLoad = MutableStateFlow(true)
@@ -89,7 +86,7 @@ class FeedViewModel @Inject constructor(
             else questions.filter { it.title.contains(query, ignoreCase = true) }
         }
         combine(
-            questionsFlow, _isRefreshing, _error, _resolveTarget, _isResolving,
+            questionsFlow, _isRefreshing, _error,
             _detail, _isInitialLoad, _hasMore, _isLoadingMore,
         ) { args ->
             @Suppress("UNCHECKED_CAST")
@@ -98,13 +95,11 @@ class FeedViewModel @Inject constructor(
                 filter = filter,
                 isRefreshing = args[1] as Boolean,
                 error = args[2] as FeedError?,
-                resolveTarget = args[3] as Question?,
-                isResolving = args[4] as Boolean,
-                detail = args[5] as DetailSheetState,
+                detail = args[3] as DetailSheetState,
                 searchQuery = query,
-                isInitialLoad = args[6] as Boolean,
-                hasMore = args[7] as Boolean,
-                isLoadingMore = args[8] as Boolean,
+                isInitialLoad = args[4] as Boolean,
+                hasMore = args[5] as Boolean,
+                isLoadingMore = args[6] as Boolean,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FeedUiState())
@@ -294,7 +289,7 @@ class FeedViewModel @Inject constructor(
             _detail.update { it.copy(isAddingComment = true) }
             _error.value = null
             try {
-                val updated = repository.addComment(question.id, text)
+                val updated = repository.addComment(question, text)
                 _detail.update {
                     it.copy(
                         question = updated,
@@ -348,26 +343,18 @@ class FeedViewModel @Inject constructor(
 
     // --- Resolve flow ---
 
-    fun showResolveSheet(question: Question) {
-        _resolveTarget.value = question
-    }
-
-    fun dismissResolveSheet() {
-        _resolveTarget.value = null
-    }
-
     fun resolveQuestion(resolution: Resolution) {
-        val question = _resolveTarget.value ?: return
+        val question = _detail.value.question ?: return
         viewModelScope.launch {
-            _isResolving.value = true
+            _detail.update { it.copy(isResolving = true) }
             _error.value = null
             try {
                 repository.resolveQuestion(question.id, resolution)
-                _resolveTarget.value = null // close sheet on success
+                _detail.value = DetailSheetState() // close sheet on success
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to resolve question")
             } finally {
-                _isResolving.value = false
+                _detail.update { it.copy(isResolving = false) }
             }
         }
     }

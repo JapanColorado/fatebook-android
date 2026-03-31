@@ -42,7 +42,6 @@ import dev.russell.fatebook.ui.components.ErrorBanner
 import dev.russell.fatebook.ui.components.QuestionCard
 import dev.russell.fatebook.ui.components.ShimmerQuestionCardList
 import dev.russell.fatebook.ui.detail.QuestionDetailSheet
-import dev.russell.fatebook.ui.resolve.ResolveBottomSheet
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -79,15 +78,8 @@ fun FeedScreen(
         onSearchQueryChanged = viewModel::setSearchQuery,
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadMore,
-        onQuestionClick = { question ->
-            if (question.isReadyToResolve) {
-                viewModel.showResolveSheet(question)
-            } else {
-                viewModel.showDetailSheet(question)
-            }
-        },
+        onQuestionClick = viewModel::showDetailSheet,
         onResolve = viewModel::resolveQuestion,
-        onDismissResolveSheet = viewModel::dismissResolveSheet,
         onForecastSliderChange = viewModel::setForecastSliderValue,
         onUpdateForecast = viewModel::updateForecast,
         onDismissDetailSheet = viewModel::dismissDetailSheet,
@@ -120,7 +112,6 @@ fun FeedScreenContent(
     onLoadMore: () -> Unit = {},
     onQuestionClick: (dev.russell.fatebook.domain.model.Question) -> Unit = {},
     onResolve: (dev.russell.fatebook.domain.model.Resolution) -> Unit = {},
-    onDismissResolveSheet: () -> Unit = {},
     onForecastSliderChange: (Float) -> Unit = {},
     onUpdateForecast: () -> Unit = {},
     onDismissDetailSheet: () -> Unit = {},
@@ -296,16 +287,6 @@ fun FeedScreenContent(
         }
     }
 
-    // Resolve bottom sheet
-    state.resolveTarget?.let { question ->
-        ResolveBottomSheet(
-            question = question,
-            isLoading = state.isResolving,
-            onResolve = { resolution -> onResolve(resolution) },
-            onDismiss = onDismissResolveSheet,
-        )
-    }
-
     // Detail bottom sheet
     state.detail.question?.let { question ->
         QuestionDetailSheet(
@@ -313,6 +294,7 @@ fun FeedScreenContent(
             detailState = state.detail,
             onForecastSliderChange = onForecastSliderChange,
             onUpdateForecast = onUpdateForecast,
+            onResolve = onResolve,
             onEnterEditMode = onEnterEditMode,
             onEditTitleChange = onEditTitleChange,
             onEditResolveByChange = onEditResolveByChange,

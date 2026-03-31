@@ -7,7 +7,7 @@
 - Open in Fatebook button should be the Fatebook logo in a circle with the edit, delete, share, and publicity icons.
 - Resolve card should be the same as the forecast card, just with the resolve buttons replacing the update forecast slider and buttons.
 - "required value 'id' missing at $" error when adding a comment.
-- Resolves in forecast card should be Resolved when the date is in the past.
+- "Resolves" in forecast card should be "Resolved" when the date is in the past.
 
 
 ## Feature Ideas

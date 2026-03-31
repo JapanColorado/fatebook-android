@@ -4,6 +4,8 @@ import com.google.common.truth.Truth.assertThat
 import dev.russell.fatebook.testutil.TestData
 import org.junit.Test
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 class QuestionTest {
 
@@ -26,11 +28,13 @@ class QuestionTest {
     }
 
     @Test
-    fun `isReadyToResolve true at exact resolveBy instant`() {
-        val now = Instant.now()
+    fun `isReadyToResolve true when resolveByDate equals today`() {
+        // Build an Instant whose UTC date matches today's local date,
+        // so resolveByDate (UTC-extracted) == LocalDate.now() (system tz).
+        val todayInstant = LocalDate.now().atStartOfDay(ZoneOffset.UTC).toInstant()
         val question = TestData.question(
             resolved = false,
-            resolveBy = now,
+            resolveBy = todayInstant,
         )
         assertThat(question.isReadyToResolve).isTrue()
     }
@@ -55,6 +59,37 @@ class QuestionTest {
         val question = TestData.question(yourLatestForecast = null)
         assertThat(question.forecastPercent).isNull()
     }
+
+    // --- resolvesLabel ---
+
+    @Test
+    fun `resolvesLabel is Resolved when resolved`() {
+        val question = TestData.question(
+            resolved = true,
+            resolveBy = Instant.parse("2099-01-01T00:00:00Z"), // future, but already resolved
+        )
+        assertThat(question.resolvesLabel).isEqualTo("Resolved")
+    }
+
+    @Test
+    fun `resolvesLabel is Resolved when resolveBy is in the past`() {
+        val question = TestData.question(
+            resolved = false,
+            resolveBy = Instant.parse("2020-01-01T00:00:00Z"), // far past
+        )
+        assertThat(question.resolvesLabel).isEqualTo("Resolved")
+    }
+
+    @Test
+    fun `resolvesLabel is Resolves when unresolved and resolveBy in the future`() {
+        val question = TestData.question(
+            resolved = false,
+            resolveBy = Instant.parse("2099-01-01T00:00:00Z"), // far future
+        )
+        assertThat(question.resolvesLabel).isEqualTo("Resolves")
+    }
+
+    // --- isForecastHidden ---
 
     @Test
     fun `isForecastHidden true when hiddenUntil is in the future`() {

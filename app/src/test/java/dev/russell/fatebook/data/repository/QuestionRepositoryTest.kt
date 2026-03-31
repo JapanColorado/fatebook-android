@@ -403,6 +403,60 @@ class QuestionRepositoryTest {
             .isEqualTo(Instant.parse("2030-06-01T00:00:00Z").toEpochMilli())
     }
 
+    // --- deleteQuestion ---
+
+    @Test
+    fun `deleteQuestion calls API without apiKey and removes from cache`() = runTest {
+        // Seed a question in the DAO
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1")))
+
+        repository.deleteQuestion("q1")
+
+        assertThat(api.deleteQuestionCalls).containsExactly("q1")
+        assertThat(dao.storedQuestions.map { it.id }).doesNotContain("q1")
+    }
+
+    // --- addComment ---
+
+    @Test
+    fun `addComment returns question with appended comment`() = runTest {
+        val question = TestData.question(id = "q1", title = "Test?")
+
+        val result = repository.addComment(question, "Nice!")
+
+        assertThat(api.addCommentCalls).hasSize(1)
+        assertThat(api.addCommentCalls[0]).isEqualTo("q1" to "Nice!")
+        assertThat(result.comments).hasSize(1)
+        assertThat(result.comments[0].comment).isEqualTo("Nice!")
+    }
+
+    @Test
+    fun `addComment preserves existing comments`() = runTest {
+        val existing = dev.russell.fatebook.domain.model.Comment(
+            id = "c1", userId = "u1", comment = "First",
+            createdAt = Instant.parse("2020-01-01T00:00:00Z"),
+        )
+        val question = TestData.question(id = "q1").copy(comments = listOf(existing))
+
+        val result = repository.addComment(question, "Second")
+
+        assertThat(result.comments).hasSize(2)
+        assertThat(result.comments[0].comment).isEqualTo("First")
+        assertThat(result.comments[1].comment).isEqualTo("Second")
+    }
+
+    @Test
+    fun `addComment throws when no API key`() = runTest {
+        every { prefs.apiKey } returns null
+        val question = TestData.question(id = "q1")
+
+        val result = runCatching { repository.addComment(question, "test") }
+
+        assertThat(result.isFailure).isTrue()
+    }
+
+    // --- mapper edge cases ---
+
     @Test
     fun `toEntity maps hideForecastsUntil`() = runTest {
         val dto = TestData.questionDto(

@@ -107,7 +107,7 @@ class FakeFatebookApi : FatebookApi {
         editQuestionCalls.add(EditQuestionCall(questionId, title, resolveBy, notes))
     }
 
-    override suspend fun deleteQuestion(questionId: String, apiKey: String) {
+    override suspend fun deleteQuestion(questionId: String) {
         deleteQuestionError?.let { throw it }
         deleteQuestionCalls.add(questionId)
     }

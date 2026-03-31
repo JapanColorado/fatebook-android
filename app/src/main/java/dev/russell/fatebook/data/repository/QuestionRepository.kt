@@ -163,17 +163,21 @@ class QuestionRepository @Inject constructor(
 
     /** Delete a question. */
     suspend fun deleteQuestion(questionId: String) {
-        val apiKey = prefs.apiKey ?: error("No API key configured")
-        api.deleteQuestion(questionId = questionId, apiKey = apiKey)
+        api.deleteQuestion(questionId = questionId)
         dao.deleteById(questionId)
     }
 
-    /** Add a comment to a question. Returns the updated question with comments. */
-    suspend fun addComment(questionId: String, comment: String): Question {
+    /** Add a comment to a question. Returns the question with the new comment appended. */
+    suspend fun addComment(question: Question, comment: String): Question {
         val apiKey = prefs.apiKey ?: error("No API key configured")
-        api.addComment(questionId = questionId, comment = comment, apiKey = apiKey)
-        // Re-fetch the question to get updated comments list
-        return getQuestion(questionId)
+        api.addComment(questionId = question.id, comment = comment, apiKey = apiKey)
+        val newComment = Comment(
+            id = "",
+            userId = "",
+            comment = comment,
+            createdAt = Instant.now(),
+        )
+        return question.copy(comments = question.comments + newComment)
     }
 
     /** Toggle public visibility of a question. */

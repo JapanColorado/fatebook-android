@@ -47,7 +47,7 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 - API dates default to midnight UTC — `QuestionRepository.parseInstant()` handles both ISO 8601 and YYYY-MM-DD. Resolve-by dates are conceptually **dates** (not timestamps): `Question.resolveByDate` extracts `LocalDate` via UTC. All date comparisons (ready-to-resolve, overdue, display) use this property and `LocalDate.now()` (device timezone)
 - Scalars converter must be registered before Moshi in Retrofit (see `NetworkModule`)
 - The API returns `type` for question type but the resolve endpoint expects `questionType` as input — these are **different field names** for the same concept
-- `editQuestion` and `setSharedPublicly` use PATCH; `deleteQuestion` uses DELETE — Retrofit `@HTTP` annotation handles these (not `@FormUrlEncoded @POST`)
+- `editQuestion` and `setSharedPublicly` use PATCH (form-encoded body); `deleteQuestion` uses DELETE with **query params** (no body, like GET) — `ApiKeyInterceptor` adds the key automatically
 - `getQuestion` returns a single `QuestionDto` (not wrapped in an envelope) — used for deep links and enriching the detail sheet with comments
 
 ## Testing
@@ -80,8 +80,7 @@ dev.russell.fatebook/
 ├── ui/feed/             # FeedScreen + FeedScreenContent + FeedViewModel
 ├── ui/create/           # CreateScreen + CreateScreenContent + CreateViewModel
 ├── ui/analytics/        # AnalyticsScreen + AnalyticsScreenContent + AnalyticsViewModel
-├── ui/resolve/          # Resolve bottom sheet
-├── ui/detail/           # Question detail bottom sheet
+├── ui/detail/           # Question detail bottom sheet (includes resolve flow)
 ├── ui/settings/         # SettingsScreen + SettingsScreenContent + SettingsViewModel
 ├── notification/        # WorkManager reminder (ReminderWorker, Scheduler, Helper)
 ├── navigation/          # Routes, NavGraph
@@ -93,8 +92,7 @@ dev.russell.fatebook/
 - **Settings screen**: API key input (obscured), validation against real API, "Get key" link, notification time picker (clock dialog), Android 13+ notification permission request
 - **Question feed**: LazyColumn with filter chips (Active / Ready to Resolve / Resolved), pull-to-refresh, search bar, empty states, shimmer skeleton loading, cursor-based pagination with infinite scroll
 - **Quick create**: Title field (auto-capitalized), date picker (default: tomorrow), probability slider with quick-set chips (10/25/50/75/90%)
-- **Resolve flow**: Bottom sheet with YES (green) / NO (red) / Ambiguous buttons, loading indicator, error surfacing via error banner. Resolve state lives in `FeedViewModel`.
-- **Question detail**: Tapping non-resolvable cards opens a detail bottom sheet (title, dates, notes, forecast, resolution, comments, "Open in Fatebook" link). Active questions show ProbabilitySlider + "Update Forecast" button. Action row provides Edit (pencil), Delete (trash with confirmation dialog), Share (Android share intent), and Visibility toggle (public/private via API). Edit mode replaces read-only fields with editable TextFields + DatePicker. Comments section shows existing comments and allows adding new ones via API.
+- **Question detail & resolve**: Tapping any card opens a unified detail bottom sheet (title, dates, notes, forecast, resolution, comments). Ready-to-resolve questions show YES/NO/Ambiguous buttons; active questions show ProbabilitySlider + "Update Forecast" button. Action row provides Edit (pencil), Delete (trash with confirmation dialog), Share (Android share intent), Open in Fatebook (external link), and Visibility toggle (eye icon with "Public"/"Private" label). Edit mode replaces read-only fields with editable TextFields + DatePicker. Comments section shows existing comments and allows adding new ones (built locally to avoid `getQuestion` deserialization issues).
 - **Deep links**: Intent filter for `https://fatebook.io/q/*` URLs. Parses question slug from URL, fetches via `getQuestion` API, and opens the detail sheet. Handles both cold-start and in-app navigation via `onNewIntent`.
 - **hideForecastsUntil**: Forecasts with a future `hideForecastsUntil` date show "Hidden" in the card and "Forecast hidden until [date]" in the detail sheet
 - **Smart notification**: WorkManager daily task, only fires if no prediction made today. Tapping notification navigates to Create screen. Both `createQuestion` and `addForecast` update the last prediction date.

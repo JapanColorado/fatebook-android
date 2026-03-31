@@ -8,13 +8,15 @@
 - Resolve card should be the same as the forecast card, just with the resolve buttons replacing the update forecast slider and buttons.
 - "required value 'id' missing at $" error when adding a comment.
 - Resolves in forecast card should be Resolved when the date is in the past.
-- All dates have off by one errors—simplify date set up so that resolution happens on a certain day, defaulting to tomorrow. Use local time zone.
+
 
 ## Feature Ideas
 
 - [ ] Tags/categories for organizing predictions by domain
 - [ ] Quick-forecast templates (pre-filled question patterns for recurring prediction types)
 - [ ] Home screen widget for quick-create
+- [ ] Ready to resolve notifications
+- [ ] Fix make a daily prediction notification
 
 ---
 
@@ -51,6 +53,7 @@
 - [x] Can't make new forecasts on existing questions
 - [x] Resolve sheet doesn't work
 - [x] Predictions have too many decimals (60% -> 60.0930823920110--float problem?)
+- [ ] All dates have off by one errors—simplify date set up so that resolution happens on a certain day, defaulting to tomorrow. Use local time zone.
 
 ### Polish (v1.x)
 - [x] Error handling -- network errors show retry banner instead of just snackbar

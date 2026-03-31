@@ -1,6 +1,8 @@
 package dev.russell.fatebook.domain.model
 
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.math.roundToInt
 
 data class Question(
@@ -20,8 +22,12 @@ data class Question(
     val unlisted: Boolean = false,
     val comments: List<Comment> = emptyList(),
 ) {
+    /** The resolve-by date (extracted from the UTC-midnight Instant the API stores). */
+    val resolveByDate: LocalDate
+        get() = resolveBy.atZone(ZoneOffset.UTC).toLocalDate()
+
     val isReadyToResolve: Boolean
-        get() = !resolved && !Instant.now().isBefore(resolveBy)
+        get() = !resolved && !LocalDate.now().isBefore(resolveByDate)
 
     val isForecastHidden: Boolean
         get() = forecastHiddenUntil != null && Instant.now().isBefore(forecastHiddenUntil)

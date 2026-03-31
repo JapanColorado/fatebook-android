@@ -210,9 +210,7 @@ class FeedViewModel @Inject constructor(
             it.copy(
                 isEditing = true,
                 editTitle = question.title,
-                editResolveBy = question.resolveBy
-                    .atZone(java.time.ZoneId.systemDefault())
-                    .toLocalDate(),
+                editResolveBy = question.resolveByDate,
                 editNotes = question.notes ?: "",
             )
         }

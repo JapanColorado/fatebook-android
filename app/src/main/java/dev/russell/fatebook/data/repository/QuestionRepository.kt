@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,9 +37,16 @@ class QuestionRepository @Inject constructor(
     fun observeActive(): Flow<List<Question>> =
         dao.observeActive().map { entities -> entities.map { it.toDomain() } }
 
-    fun observeReadyToResolve(): Flow<List<Question>> =
-        dao.observeReadyToResolve(System.currentTimeMillis())
+    fun observeReadyToResolve(): Flow<List<Question>> {
+        // Convert today's local date to UTC midnight epoch ms for comparison
+        // against the stored UTC-midnight resolveByEpochMs values
+        val todayUtcMs = LocalDate.now()
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
+            .toEpochMilli()
+        return dao.observeReadyToResolve(todayUtcMs)
             .map { entities -> entities.map { it.toDomain() } }
+    }
 
     fun observeResolved(): Flow<List<Question>> =
         dao.observeResolved().map { entities -> entities.map { it.toDomain() } }

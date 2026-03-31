@@ -44,7 +44,7 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 
 - `createQuestion` is a **GET** request (not POST) — returns plain-text URL, not JSON
 - `apiKey` is a **query parameter** for GET requests (handled by `ApiKeyInterceptor`), but must be an explicit **`@Field`** in POST request bodies (`resolveQuestion`, `addForecast`)
-- API dates default to midnight UTC — `QuestionRepository.parseInstant()` handles both ISO 8601 and YYYY-MM-DD
+- API dates default to midnight UTC — `QuestionRepository.parseInstant()` handles both ISO 8601 and YYYY-MM-DD. Resolve-by dates are conceptually **dates** (not timestamps): `Question.resolveByDate` extracts `LocalDate` via UTC. All date comparisons (ready-to-resolve, overdue, display) use this property and `LocalDate.now()` (device timezone)
 - Scalars converter must be registered before Moshi in Retrofit (see `NetworkModule`)
 - The API returns `type` for question type but the resolve endpoint expects `questionType` as input — these are **different field names** for the same concept
 - `editQuestion` and `setSharedPublicly` use PATCH; `deleteQuestion` uses DELETE — Retrofit `@HTTP` annotation handles these (not `@FormUrlEncoded @POST`)

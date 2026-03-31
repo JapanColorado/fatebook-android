@@ -174,11 +174,7 @@ private fun ColumnScope.ReadModeContent(
 
     // Resolve-by date
     Text(
-        text = "Resolves: ${
-            question.resolveBy
-                .atZone(ZoneId.systemDefault())
-                .format(dateFormatter)
-        }",
+        text = "Resolves: ${question.resolveByDate.format(dateFormatter)}",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -199,7 +195,8 @@ private fun ColumnScope.ReadModeContent(
         Text(
             text = "Forecast hidden until ${
                 question.forecastHiddenUntil!!
-                    .atZone(ZoneId.systemDefault())
+                    .atZone(java.time.ZoneOffset.UTC)
+                    .toLocalDate()
                     .format(dateFormatter)
             }",
             style = MaterialTheme.typography.bodyMedium,

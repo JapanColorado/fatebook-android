@@ -62,9 +62,9 @@ fun QuestionCard(
                 )
                 Text(
                     text = if (question.resolved) {
-                        "Resolved ${absoluteDate(question.resolveBy)}"
+                        "Resolved ${absoluteDate(question.resolveByDate)}"
                     } else {
-                        "Resolution ${relativeDate(question.resolveBy)}"
+                        "Resolution ${relativeDate(question.resolveByDate)}"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -129,15 +129,12 @@ private fun timeAgo(instant: Instant): String {
     }
 }
 
-private fun absoluteDate(instant: Instant): String =
-    instant.atZone(ZoneId.systemDefault())
-        .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+private fun absoluteDate(date: LocalDate): String =
+    date.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
 
-private fun relativeDate(instant: Instant): String {
-    val zone = ZoneId.systemDefault()
-    val today = LocalDate.now(zone)
-    val targetDate = instant.atZone(zone).toLocalDate()
-    val daysDiff = ChronoUnit.DAYS.between(today, targetDate)
+private fun relativeDate(date: LocalDate): String {
+    val today = LocalDate.now()
+    val daysDiff = ChronoUnit.DAYS.between(today, date)
     return when {
         daysDiff < -1 -> "${-daysDiff}d overdue"
         daysDiff == -1L -> "1d overdue"
@@ -145,6 +142,6 @@ private fun relativeDate(instant: Instant): String {
         daysDiff == 1L -> "tomorrow"
         daysDiff < 7 -> "in ${daysDiff}d"
         daysDiff < 30 -> "in ${daysDiff / 7}w"
-        else -> instant.atZone(zone).format(DateTimeFormatter.ofPattern("MMM d"))
+        else -> date.format(DateTimeFormatter.ofPattern("MMM d"))
     }
 }

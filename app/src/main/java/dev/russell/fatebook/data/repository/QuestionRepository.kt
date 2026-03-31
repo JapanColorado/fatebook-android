@@ -1,11 +1,14 @@
 package dev.russell.fatebook.data.repository
 
+import dev.russell.fatebook.data.local.CommentDao
+import dev.russell.fatebook.data.local.CommentEntity
 import dev.russell.fatebook.data.local.ForecastDao
 import dev.russell.fatebook.data.local.ForecastEntity
 import dev.russell.fatebook.data.local.QuestionDao
 import dev.russell.fatebook.data.local.QuestionEntity
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.FatebookApi
+import dev.russell.fatebook.data.remote.dto.CommentDto
 import dev.russell.fatebook.data.remote.dto.QuestionDto
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Forecast
@@ -26,6 +29,7 @@ class QuestionRepository @Inject constructor(
     private val api: FatebookApi,
     private val dao: QuestionDao,
     private val forecastDao: ForecastDao,
+    private val commentDao: CommentDao,
     private val prefs: UserPreferences,
 ) {
     private var nextCursor: Int? = null
@@ -65,8 +69,17 @@ class QuestionRepository @Inject constructor(
         val entities = binaryOnly.map { it.toEntity() }
         dao.deleteAll()
         forecastDao.deleteAll()
+        commentDao.deleteAll()
         dao.upsertAll(entities)
         forecastDao.upsertAll(binaryOnly.flatMap { it.toForecastEntities() })
+        commentDao.upsertAll(binaryOnly.flatMap { it.toCommentEntities() })
+        // Extract user's display name from forecast data (all forecasts are the user's own)
+        if (prefs.displayName == null) {
+            val name = binaryOnly.firstNotNullOfOrNull { dto ->
+                dto.forecasts?.firstNotNullOfOrNull { it.user?.name }
+            }
+            if (name != null) prefs.displayName = name
+        }
         return binaryOnly.map { it.toDomain() }
     }
 
@@ -79,6 +92,7 @@ class QuestionRepository @Inject constructor(
         val entities = binaryOnly.map { it.toEntity() }
         dao.upsertAll(entities)
         forecastDao.upsertAll(binaryOnly.flatMap { it.toForecastEntities() })
+        commentDao.upsertAll(binaryOnly.flatMap { it.toCommentEntities() })
         return response.nextCursor != null
     }
 
@@ -167,17 +181,35 @@ class QuestionRepository @Inject constructor(
         dao.deleteById(questionId)
     }
 
-    /** Add a comment to a question. Returns the question with the new comment appended. */
-    suspend fun addComment(question: Question, comment: String): Question {
+    /** Load comments for a question from local cache. */
+    suspend fun getCommentsForQuestion(questionId: String): List<Comment> {
+        return commentDao.getByQuestionId(questionId).map { it.toDomain() }
+    }
+
+    /** Add a comment to a question. Returns the newly created Comment. */
+    suspend fun addComment(questionId: String, comment: String): Comment {
         val apiKey = prefs.apiKey ?: error("No API key configured")
-        api.addComment(questionId = question.id, comment = comment, apiKey = apiKey)
+        api.addComment(questionId = questionId, comment = comment, apiKey = apiKey)
+        val now = Instant.now()
+        val userName = prefs.displayName
         val newComment = Comment(
-            id = "",
+            id = "local_${now.toEpochMilli()}",
             userId = "",
+            userName = userName,
             comment = comment,
-            createdAt = Instant.now(),
+            createdAt = now,
         )
-        return question.copy(comments = question.comments + newComment)
+        commentDao.insert(
+            CommentEntity(
+                id = newComment.id,
+                questionId = questionId,
+                userId = "",
+                userName = userName,
+                comment = comment,
+                createdAtEpochMs = now.toEpochMilli(),
+            )
+        )
+        return newComment
     }
 
     /** Toggle public visibility of a question. */
@@ -238,6 +270,39 @@ class QuestionRepository @Inject constructor(
                 )
             } ?: emptyList()
 
+    private fun CommentDto.toDomain(): Comment? {
+        val body = comment ?: return null
+        return Comment(
+            id = id ?: "",
+            userId = userId ?: "",
+            userName = user?.name,
+            comment = body,
+            createdAt = createdAt?.let { parseInstant(it) } ?: Instant.EPOCH,
+        )
+    }
+
+    private fun QuestionDto.toCommentEntities(): List<CommentEntity> =
+        comments?.mapNotNull { dto ->
+            val comment = dto.toDomain() ?: return@mapNotNull null
+            val entityId = dto.id ?: return@mapNotNull null
+            CommentEntity(
+                id = entityId,
+                questionId = id,
+                userId = comment.userId,
+                userName = comment.userName,
+                comment = comment.comment,
+                createdAtEpochMs = comment.createdAt.toEpochMilli(),
+            )
+        } ?: emptyList()
+
+    private fun CommentEntity.toDomain(): Comment = Comment(
+        id = id,
+        userId = userId,
+        userName = userName,
+        comment = comment,
+        createdAt = Instant.ofEpochMilli(createdAtEpochMs),
+    )
+
     private fun QuestionDto.toDomain(): Question {
         val latest = forecasts
             ?.filter { it.forecast != null }
@@ -266,15 +331,7 @@ class QuestionRepository @Inject constructor(
             notes = notes,
             sharedPublicly = sharedPublicly ?: false,
             unlisted = unlisted ?: false,
-            comments = comments?.mapNotNull { dto ->
-                if (dto.comment == null) null
-                else Comment(
-                    id = dto.id ?: "",
-                    userId = dto.userId ?: "",
-                    comment = dto.comment,
-                    createdAt = dto.createdAt?.let { parseInstant(it) } ?: Instant.EPOCH,
-                )
-            } ?: emptyList(),
+            comments = comments?.mapNotNull { it.toDomain() } ?: emptyList(),
         )
     }
 
@@ -294,7 +351,7 @@ class QuestionRepository @Inject constructor(
             notes = notes,
             sharedPublicly = sharedPublicly,
             unlisted = unlisted,
-            // Comments not cached locally — fetched on-demand via getQuestion()
+            // Comments loaded separately via getCommentsForQuestion()
         )
     }
 

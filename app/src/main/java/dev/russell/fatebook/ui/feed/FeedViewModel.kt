@@ -153,21 +153,19 @@ class FeedViewModel @Inject constructor(
         _detail.value = DetailSheetState(
             question = question,
             forecastSliderValue = question.yourLatestForecast?.toFloat() ?: 0.5f,
-            comments = question.comments,
         )
-        // Enrich with full data (comments, visibility state) from API
+        // Load comments from local cache (populated during refresh from getQuestions API)
         viewModelScope.launch {
             _detail.update { it.copy(isLoadingComments = true) }
             try {
-                val full = repository.getQuestion(question.id)
+                val comments = repository.getCommentsForQuestion(question.id)
                 _detail.update {
                     it.copy(
-                        question = full,
-                        comments = full.comments,
+                        comments = comments,
                         isLoadingComments = false,
                     )
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 _detail.update { it.copy(isLoadingComments = false) }
             }
         }
@@ -289,11 +287,10 @@ class FeedViewModel @Inject constructor(
             _detail.update { it.copy(isAddingComment = true) }
             _error.value = null
             try {
-                val updated = repository.addComment(question, text)
+                val newComment = repository.addComment(question.id, text)
                 _detail.update {
                     it.copy(
-                        question = updated,
-                        comments = updated.comments,
+                        comments = it.comments + newComment,
                         commentText = "",
                         isAddingComment = false,
                     )

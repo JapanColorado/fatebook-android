@@ -4,11 +4,12 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [QuestionEntity::class, ForecastEntity::class],
-    version = 5,
+    entities = [QuestionEntity::class, ForecastEntity::class, CommentEntity::class],
+    version = 7,
     exportSchema = false,
 )
 abstract class FatebookDatabase : RoomDatabase() {
     abstract fun questionDao(): QuestionDao
     abstract fun forecastDao(): ForecastDao
+    abstract fun commentDao(): CommentDao
 }

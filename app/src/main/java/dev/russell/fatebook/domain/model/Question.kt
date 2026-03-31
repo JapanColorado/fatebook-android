@@ -48,6 +48,7 @@ data class Forecast(
 data class Comment(
     val id: String,
     val userId: String,
+    val userName: String?,
     val comment: String,
     val createdAt: Instant,
 )

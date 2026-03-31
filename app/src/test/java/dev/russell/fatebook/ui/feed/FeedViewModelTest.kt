@@ -446,7 +446,12 @@ class FeedViewModelTest {
     fun `addComment calls repository and clears text`() = runTest {
         val question = TestData.question(id = "q1")
         coEvery { repository.getQuestion("q1") } returns question
-        coEvery { repository.addComment(any(), any()) } returns question
+        val newComment = dev.russell.fatebook.domain.model.Comment(
+            id = "local_1", userId = "", userName = null,
+            comment = "Great prediction!",
+            createdAt = java.time.Instant.now(),
+        )
+        coEvery { repository.addComment(any(), any()) } returns newComment
 
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -460,8 +465,10 @@ class FeedViewModelTest {
         vm.addComment()
         advanceUntilIdle()
 
-        coVerify { repository.addComment(eq(question), eq("Great prediction!")) }
+        coVerify { repository.addComment(eq("q1"), eq("Great prediction!")) }
         assertThat(vm.uiState.value.detail.commentText).isEmpty()
+        assertThat(vm.uiState.value.detail.comments).hasSize(1)
+        assertThat(vm.uiState.value.detail.comments[0].comment).isEqualTo("Great prediction!")
     }
 
     @Test

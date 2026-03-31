@@ -32,6 +32,7 @@ data class ForecastDto(
     val forecast: Double?,
     @Json(name = "createdAt") val createdAt: String?,
     val hideForecastsUntil: String?,
+    val user: UserDto? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -40,6 +41,12 @@ data class CommentDto(
     val userId: String?,
     val comment: String?,
     @Json(name = "createdAt") val createdAt: String?,
+    val user: UserDto? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class UserDto(
+    val name: String?,
 )
 
 @JsonClass(generateAdapter = true)

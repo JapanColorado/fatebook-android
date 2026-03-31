@@ -6,6 +6,7 @@ import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.dto.ForecastDto
 import dev.russell.fatebook.data.remote.dto.QuestionsResponseDto
 import dev.russell.fatebook.domain.model.Resolution
+import dev.russell.fatebook.testutil.FakeCommentDao
 import dev.russell.fatebook.testutil.FakeFatebookApi
 import dev.russell.fatebook.testutil.FakeForecastDao
 import dev.russell.fatebook.testutil.FakeQuestionDao
@@ -23,6 +24,7 @@ class QuestionRepositoryTest {
     private lateinit var api: FakeFatebookApi
     private lateinit var dao: FakeQuestionDao
     private lateinit var forecastDao: FakeForecastDao
+    private lateinit var commentDao: FakeCommentDao
     private lateinit var prefs: UserPreferences
     private lateinit var repository: QuestionRepository
 
@@ -31,9 +33,10 @@ class QuestionRepositoryTest {
         api = FakeFatebookApi()
         dao = FakeQuestionDao()
         forecastDao = FakeForecastDao()
+        commentDao = FakeCommentDao()
         prefs = mockk(relaxed = true)
         every { prefs.apiKey } returns "test-api-key"
-        repository = QuestionRepository(api, dao, forecastDao, prefs)
+        repository = QuestionRepository(api, dao, forecastDao, commentDao, prefs)
     }
 
     // --- refresh ---
@@ -419,38 +422,28 @@ class QuestionRepositoryTest {
     // --- addComment ---
 
     @Test
-    fun `addComment returns question with appended comment`() = runTest {
-        val question = TestData.question(id = "q1", title = "Test?")
-
-        val result = repository.addComment(question, "Nice!")
+    fun `addComment calls API and returns new comment`() = runTest {
+        val result = repository.addComment("q1", "Nice!")
 
         assertThat(api.addCommentCalls).hasSize(1)
         assertThat(api.addCommentCalls[0]).isEqualTo("q1" to "Nice!")
-        assertThat(result.comments).hasSize(1)
-        assertThat(result.comments[0].comment).isEqualTo("Nice!")
+        assertThat(result.comment).isEqualTo("Nice!")
     }
 
     @Test
-    fun `addComment preserves existing comments`() = runTest {
-        val existing = dev.russell.fatebook.domain.model.Comment(
-            id = "c1", userId = "u1", comment = "First",
-            createdAt = Instant.parse("2020-01-01T00:00:00Z"),
-        )
-        val question = TestData.question(id = "q1").copy(comments = listOf(existing))
+    fun `addComment persists to local cache`() = runTest {
+        repository.addComment("q1", "Nice!")
 
-        val result = repository.addComment(question, "Second")
-
-        assertThat(result.comments).hasSize(2)
-        assertThat(result.comments[0].comment).isEqualTo("First")
-        assertThat(result.comments[1].comment).isEqualTo("Second")
+        assertThat(commentDao.storedComments).hasSize(1)
+        assertThat(commentDao.storedComments[0].comment).isEqualTo("Nice!")
+        assertThat(commentDao.storedComments[0].questionId).isEqualTo("q1")
     }
 
     @Test
     fun `addComment throws when no API key`() = runTest {
         every { prefs.apiKey } returns null
-        val question = TestData.question(id = "q1")
 
-        val result = runCatching { repository.addComment(question, "test") }
+        val result = runCatching { repository.addComment("q1", "test") }
 
         assertThat(result.isFailure).isTrue()
     }

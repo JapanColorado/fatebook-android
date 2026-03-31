@@ -8,6 +8,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.russell.fatebook.data.local.FatebookDatabase
+import dev.russell.fatebook.data.local.CommentDao
 import dev.russell.fatebook.data.local.ForecastDao
 import dev.russell.fatebook.data.local.QuestionDao
 import javax.inject.Singleton
@@ -33,4 +34,8 @@ object DatabaseModule {
     @Provides
     fun provideForecastDao(database: FatebookDatabase): ForecastDao =
         database.forecastDao()
+
+    @Provides
+    fun provideCommentDao(database: FatebookDatabase): CommentDao =
+        database.commentDao()
 }

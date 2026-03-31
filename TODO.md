@@ -2,13 +2,7 @@
 
 ## Bugs
 
-- 400 Error when deleting question
-- Public/Private text should be under eye icon in card
-- Open in Fatebook button should be the Fatebook logo in a circle with the edit, delete, share, and publicity icons.
-- Resolve card should be the same as the forecast card, just with the resolve buttons replacing the update forecast slider and buttons.
-- "required value 'id' missing at $" error when adding a comment.
-- "Resolves" in forecast card should be "Resolved" when the date is in the past.
-
+- [ ] Deep links fail for questions not in local cache (`getQuestion` API returns incompatible JSON shape — needs a dedicated DTO or a different fetch strategy)
 
 ## Feature Ideas
 
@@ -45,6 +39,12 @@
 - [x] Search bar should autocapitalize
 - [x] I select a date in the resolve by, and then it shows up as the day before in the resolve by bar and then is all weird as well in the feed. Also, when I say resolve today, it doesn't show as ready to resolve.
 - [x] "Predicted by x" text should be all the way right justified (below percentage)
+- [x] 400 Error when deleting question
+- [x] Public/Private text should be under eye icon in card
+- [x] Open in Fatebook button should be the Fatebook logo in a circle with the edit, delete, share, and publicity icons.
+- [x] Resolve card should be the same as the forecast card, just with the resolve buttons replacing the update forecast slider and buttons.
+- [x] "required value 'id' missing at $" error when adding a comment.
+- [x] "Resolves" in forecast card should be "Resolved" when the date is in the past.
 
 ### Known Bugs
 - [x] Multi-option predictions aren't working (filter out or major redesign?)
@@ -53,7 +53,7 @@
 - [x] Can't make new forecasts on existing questions
 - [x] Resolve sheet doesn't work
 - [x] Predictions have too many decimals (60% -> 60.0930823920110--float problem?)
-- [ ] All dates have off by one errors—simplify date set up so that resolution happens on a certain day, defaulting to tomorrow. Use local time zone.
+- [x] All dates have off by one errors—simplify date set up so that resolution happens on a certain day, defaulting to tomorrow. Use local time zone.
 
 ### Polish (v1.x)
 - [x] Error handling -- network errors show retry banner instead of just snackbar

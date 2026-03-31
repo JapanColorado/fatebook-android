@@ -385,7 +385,7 @@ private fun ColumnScope.ReadModeContent(
         )
     } else {
         detailState.comments.forEach { comment ->
-            CommentItem(comment = comment)
+            CommentItem(comment = comment, dateFormatter = dateFormatter)
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
@@ -499,17 +499,22 @@ private fun EditModeContent(
 }
 
 @Composable
-private fun CommentItem(comment: Comment) {
-    val dateFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
+private fun CommentItem(comment: Comment, dateFormatter: DateTimeFormatter) {
     Column {
         Text(
             text = comment.comment,
             style = MaterialTheme.typography.bodyMedium,
         )
+        val dateText = comment.createdAt
+            .atZone(ZoneId.systemDefault())
+            .format(dateFormatter)
+        val metaText = if (comment.userName != null) {
+            "${comment.userName} | $dateText"
+        } else {
+            dateText
+        }
         Text(
-            text = comment.createdAt
-                .atZone(ZoneId.systemDefault())
-                .format(dateFormatter),
+            text = metaText,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

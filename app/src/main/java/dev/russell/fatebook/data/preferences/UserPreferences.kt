@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -59,6 +60,10 @@ class UserPreferences @Inject constructor(
     val lastPredictionDateEpochMs: Flow<Long> =
         context.dataStore.data.map { it[LAST_PREDICTION_DATE] ?: 0L }
 
+    var displayName: String?
+        get() = encryptedPrefs.getString(KEY_DISPLAY_NAME, null)
+        set(value) = encryptedPrefs.edit().putString(KEY_DISPLAY_NAME, value).apply()
+
     suspend fun setNotificationsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[NOTIFICATIONS_ENABLED] = enabled }
     }
@@ -80,6 +85,7 @@ class UserPreferences @Inject constructor(
 
     companion object {
         private const val KEY_API_KEY = "api_key"
+        private const val KEY_DISPLAY_NAME = "display_name"
         private val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         private val REMINDER_HOUR = intPreferencesKey("reminder_hour")
         private val REMINDER_MINUTE = intPreferencesKey("reminder_minute")

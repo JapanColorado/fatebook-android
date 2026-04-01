@@ -322,22 +322,6 @@ class FeedViewModel @Inject constructor(
         }
     }
 
-    // --- Deep links ---
-
-    fun openDeepLinkedQuestion(questionId: String) {
-        viewModelScope.launch {
-            _error.value = null
-            try {
-                // Try local cache first, fall back to API
-                val question = repository.getCachedQuestion(questionId)
-                    ?: repository.getQuestion(questionId)
-                showDetailSheet(question)
-            } catch (e: Exception) {
-                _error.value = classifyError(e, "Failed to load question")
-            }
-        }
-    }
-
     // --- Resolve flow ---
 
     fun resolveQuestion(resolution: Resolution) {

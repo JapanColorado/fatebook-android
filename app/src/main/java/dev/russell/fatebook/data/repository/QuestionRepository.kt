@@ -159,12 +159,6 @@ class QuestionRepository @Inject constructor(
         }
     }
 
-    /** Fetch a single question by ID (for deep links and enriching detail view). */
-    suspend fun getQuestion(questionId: String): Question {
-        val dto = api.getQuestion(questionId)
-        return dto.toDomain()
-    }
-
     /** Edit question fields. Only non-null params are sent to the API. */
     suspend fun editQuestion(
         questionId: String,
@@ -234,11 +228,6 @@ class QuestionRepository @Inject constructor(
             apiKey = apiKey,
         )
         refresh()
-    }
-
-    /** Look up a question in the local cache by ID. */
-    suspend fun getCachedQuestion(questionId: String): Question? {
-        return dao.getById(questionId)?.toDomain()
     }
 
     // --- Mappers ---

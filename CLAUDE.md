@@ -48,7 +48,6 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 - Scalars converter must be registered before Moshi in Retrofit (see `NetworkModule`)
 - The API returns `type` for question type but the resolve endpoint expects `questionType` as input — these are **different field names** for the same concept
 - `editQuestion` and `setSharedPublicly` use PATCH (form-encoded body); `deleteQuestion` uses DELETE with **query params** (no body, like GET) — `ApiKeyInterceptor` adds the key automatically
-- **`getQuestion` returns a different JSON shape** than `getQuestions` — no `id` field, no `comments`, no `url`, no `sharedPublicly`. Forecasts have nested `user` objects instead of flat `userId`. It **cannot** be deserialized as `QuestionDto`. Currently only used as a fallback for deep links (when question isn't in local cache). Do not use for enriching the detail sheet.
 - `getQuestions` (list endpoint) **does** return comments with nested `user` objects — these are stored in Room's `CommentEntity` table during refresh
 
 ## Testing
@@ -95,7 +94,6 @@ dev.russell.fatebook/
 - **Question feed**: LazyColumn with filter chips (Active / Ready to Resolve / Resolved), pull-to-refresh, search bar, empty states, shimmer skeleton loading, cursor-based pagination with infinite scroll
 - **Quick create**: Title field (auto-capitalized), date picker (default: tomorrow), probability slider with quick-set chips (10/25/50/75/90%)
 - **Question detail & resolve**: Tapping any card opens a unified detail bottom sheet (title, dates, notes, forecast, resolution, comments). Ready-to-resolve questions show YES/NO/Ambiguous buttons; active questions show ProbabilitySlider + "Update Forecast" button. Action row provides Edit (pencil), Delete (trash with confirmation dialog), Share (Android share intent), Open in Fatebook (external link), and Visibility toggle (eye icon with "Public"/"Private" label). Edit mode replaces read-only fields with editable TextFields + DatePicker. Comments section shows existing comments (with author name and date) and allows adding new ones. Comments are persisted in Room's `CommentEntity` table, synced from the `getQuestions` list API.
-- **Deep links**: Intent filter for `https://fatebook.io/q/*` URLs. Parses question slug from URL, fetches via `getQuestion` API, and opens the detail sheet. Handles both cold-start and in-app navigation via `onNewIntent`.
 - **hideForecastsUntil**: Forecasts with a future `hideForecastsUntil` date show "Hidden" in the card and "Forecast hidden until [date]" in the detail sheet
 - **Notifications**: Two separate notification channels, both fired by a single daily WorkManager task at the user's chosen time:
   - *Daily Reminder* (`daily_reminder` channel): Always fires, tapping opens Create screen.

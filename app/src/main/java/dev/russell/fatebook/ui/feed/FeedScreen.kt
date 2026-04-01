@@ -57,18 +57,10 @@ fun FeedScreen(
     onCreateClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onAnalyticsClick: () -> Unit,
-    deepLinkQuestionId: String? = null,
     initialFilter: FeedFilter? = null,
     viewModel: FeedViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-
-    // Handle deep link
-    LaunchedEffect(deepLinkQuestionId) {
-        if (deepLinkQuestionId != null) {
-            viewModel.openDeepLinkedQuestion(deepLinkQuestionId)
-        }
-    }
 
     // Handle initial filter from notification
     LaunchedEffect(initialFilter) {

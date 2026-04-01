@@ -1,6 +1,5 @@
 package dev.russell.fatebook
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,41 +24,14 @@ class MainActivity : ComponentActivity() {
         val openResolveFilter = intent.getBooleanExtra(
             NotificationHelper.EXTRA_OPEN_RESOLVE_FILTER, false,
         )
-        val deepLinkQuestionId = parseDeepLink(intent)
         setContent {
             FatebookTheme {
                 FatebookNavGraph(
                     userPreferences = userPreferences,
                     openCreate = openCreate,
                     openResolveFilter = openResolveFilter,
-                    deepLinkQuestionId = deepLinkQuestionId,
                 )
             }
         }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        val deepLinkQuestionId = parseDeepLink(intent)
-        if (deepLinkQuestionId != null) {
-            // Re-compose with the new deep link
-            setContent {
-                FatebookTheme {
-                    FatebookNavGraph(
-                        userPreferences = userPreferences,
-                        deepLinkQuestionId = deepLinkQuestionId,
-                    )
-                }
-            }
-        }
-    }
-
-    private fun parseDeepLink(intent: Intent?): String? {
-        val uri = intent?.data ?: return null
-        if (uri.host != "fatebook.io") return null
-        val segments = uri.pathSegments
-        if (segments.firstOrNull() != "q" || segments.size < 2) return null
-        return segments[1] // full slug like "will-it-rain--clq1abc123"
     }
 }

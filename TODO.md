@@ -1,14 +1,10 @@
 # TODO
 
-## Bugs
-
-- [ ] Deep links fail for questions not in local cache (`getQuestion` API returns incompatible JSON shape — needs a dedicated DTO or a different fetch strategy)
-
 ## Feature Ideas
 
-- [ ] Tags/categories for organizing predictions by domain
 - [ ] Quick-forecast templates (pre-filled question patterns for recurring prediction types)
 - [ ] Home screen widget for quick-create
+- [ ] Deep linking for fatebook.io/q/* URLs (requires Android App Links domain verification or custom scheme)
 - [x] Ready to resolve notifications
 - [x] Fix make a daily prediction notification
 
@@ -22,7 +18,7 @@
 - [x] Edit question title/resolveBy/notes (via API editQuestion endpoint)
 - [x] Delete questions (via API deleteQuestion endpoint, with confirmation dialog)
 - [x] Share questions publicly / toggle visibility (Android share intent + API setSharedPublicly)
-- [x] Deep link support (open fatebook.io/q/* URLs in app)
+- [x] ~Deep link support~ (removed — Android 12+ defaults https links to browser without domain verification)
 
 ### General
 - [x] Date selector shouldn't be dim-grayed out in prediction card if you selected a different date than that day.

@@ -13,8 +13,6 @@ class FakeFatebookApi : FatebookApi {
     var resolveQuestionError: Exception? = null
     var addForecastError: Exception? = null
     var validateApiKeyError: Exception? = null
-    var getQuestionResponse: QuestionDto = TestData.questionDto()
-    var getQuestionError: Exception? = null
     var editQuestionError: Exception? = null
     var deleteQuestionError: Exception? = null
     var addCommentError: Exception? = null
@@ -24,7 +22,6 @@ class FakeFatebookApi : FatebookApi {
     val createQuestionCalls = mutableListOf<Triple<String, String, Double>>()
     val resolveQuestionCalls = mutableListOf<Triple<String, String, String>>()
     val addForecastCalls = mutableListOf<Triple<String, Double, String>>()
-    val getQuestionCalls = mutableListOf<String>()
     val editQuestionCalls = mutableListOf<EditQuestionCall>()
     val deleteQuestionCalls = mutableListOf<String>()
     val addCommentCalls = mutableListOf<Pair<String, String>>()
@@ -88,12 +85,6 @@ class FakeFatebookApi : FatebookApi {
     override suspend fun validateApiKey(limit: Int): QuestionsResponseDto {
         validateApiKeyError?.let { throw it }
         return TestData.questionsResponse()
-    }
-
-    override suspend fun getQuestion(questionId: String): QuestionDto {
-        getQuestionError?.let { throw it }
-        getQuestionCalls.add(questionId)
-        return getQuestionResponse
     }
 
     override suspend fun editQuestion(

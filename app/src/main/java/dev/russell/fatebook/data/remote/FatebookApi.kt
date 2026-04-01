@@ -64,12 +64,6 @@ interface FatebookApi {
         @Query("limit") limit: Int = 1,
     ): QuestionsResponseDto
 
-    /** Fetch a single question by ID (for deep links and enriching detail view). */
-    @GET("getQuestion")
-    suspend fun getQuestion(
-        @Query("questionId") questionId: String,
-    ): QuestionDto
-
     /** Edit question fields (title, resolveBy, notes). */
     @FormUrlEncoded
     @HTTP(method = "PATCH", path = "editQuestion", hasBody = true)

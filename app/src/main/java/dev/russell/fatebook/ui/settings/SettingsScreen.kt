@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -101,6 +104,11 @@ fun SettingsScreen(
                 Intent(Intent.ACTION_VIEW, Uri.parse("https://fatebook.io/api-setup"))
             )
         },
+        onPrivacyPolicyClick = {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse("https://japancolorado.github.io/FatebookApp/privacy-policy"))
+            )
+        },
     )
 }
 
@@ -114,6 +122,7 @@ fun SettingsScreenContent(
     onNotificationsEnabledChanged: (Boolean) -> Unit = {},
     onReminderTimeChanged: (Int, Int) -> Unit = { _, _ -> },
     onGetApiKeyClick: () -> Unit = {},
+    onPrivacyPolicyClick: () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -133,7 +142,8 @@ fun SettingsScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             // --- API Key ---
@@ -231,6 +241,25 @@ fun SettingsScreenContent(
                         text = { TimePicker(state = timePickerState) },
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // --- Privacy ---
+            HorizontalDivider()
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                "Your API key is stored locally using encrypted storage. " +
+                    "Predictions are cached on-device for offline access. " +
+                    "No data is shared with third parties. No analytics or tracking.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            TextButton(onClick = onPrivacyPolicyClick) {
+                Text("Privacy Policy")
             }
         }
     }

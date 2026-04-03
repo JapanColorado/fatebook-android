@@ -5,6 +5,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import dev.russell.fatebook.BuildConfig
 import dev.russell.fatebook.data.remote.ApiKeyInterceptor
 import dev.russell.fatebook.data.remote.FatebookApi
 import okhttp3.OkHttpClient
@@ -29,7 +30,8 @@ object NetworkModule {
             .addInterceptor(apiKeyInterceptor)
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BODY
+                    level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY
+                        else HttpLoggingInterceptor.Level.NONE
                 }
             )
             .build()

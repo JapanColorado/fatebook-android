@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -213,6 +215,8 @@ fun FeedScreenContent(
                     message = state.error.message,
                     onRetry = onRefresh,
                     onDismiss = onDismissError,
+                    actionLabel = if (state.error is FeedError.Auth) "Settings" else "Retry",
+                    onAction = if (state.error is FeedError.Auth) onSettingsClick else null,
                 )
             }
 
@@ -228,19 +232,34 @@ fun FeedScreenContent(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = if (state.searchQuery.isNotBlank()) {
-                                "No predictions matching \"${state.searchQuery}\""
-                            } else {
-                                when (state.filter) {
-                                    FeedFilter.ACTIVE -> "No active predictions"
-                                    FeedFilter.READY_TO_RESOLVE -> "Nothing to resolve"
-                                    FeedFilter.RESOLVED -> "No resolved predictions yet"
-                                }
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        if (state.searchQuery.isBlank() && state.filter == FeedFilter.ACTIVE) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "No predictions yet",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = "Tap + to create your first prediction",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = if (state.searchQuery.isNotBlank()) {
+                                    "No predictions matching \"${state.searchQuery}\""
+                                } else {
+                                    when (state.filter) {
+                                        FeedFilter.ACTIVE -> "No active predictions"
+                                        FeedFilter.READY_TO_RESOLVE -> "Nothing to resolve"
+                                        FeedFilter.RESOLVED -> "No resolved predictions yet"
+                                    }
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 } else {
                     val listState = rememberLazyListState()

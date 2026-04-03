@@ -1,5 +1,9 @@
 # TODO
 
+- [ ] Make Articon icon (https://docs.arcticons.com/contribute)
+- [ ] Enable GitHub Pages on repo (Settings > Pages > deploy from `/docs` on `main`) for privacy policy
+- [ ] Set up Play Store signing (replace debug signing fallback in release buildType)
+
 ## Feature Ideas
 
 - [ ] Quick-forecast templates (pre-filled question patterns for recurring prediction types)

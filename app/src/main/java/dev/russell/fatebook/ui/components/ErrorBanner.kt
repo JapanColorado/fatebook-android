@@ -24,6 +24,8 @@ fun ErrorBanner(
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    actionLabel: String = "Retry",
+    onAction: (() -> Unit)? = null,
 ) {
     Surface(
         modifier = modifier
@@ -49,8 +51,8 @@ fun ErrorBanner(
                 color = MaterialTheme.colorScheme.onErrorContainer,
                 style = MaterialTheme.typography.bodyMedium,
             )
-            TextButton(onClick = onRetry) {
-                Text("Retry")
+            TextButton(onClick = onAction ?: onRetry) {
+                Text(actionLabel)
             }
             IconButton(onClick = onDismiss) {
                 Icon(

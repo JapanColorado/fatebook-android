@@ -42,6 +42,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -198,10 +200,21 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
         color = onSurfaceColor,
     )
 
+    val calibrationDescription = remember(buckets) {
+        if (buckets.isEmpty()) "Calibration chart with no data"
+        else buildString {
+            append("Calibration chart. ")
+            buckets.forEach { b ->
+                append("${b.rangeLabel}: ${(b.actualRate * 100).toInt()}% actual, ${b.count} predictions. ")
+            }
+        }
+    }
+
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
             .height(200.dp)
+            .semantics { contentDescription = calibrationDescription }
             .pointerInput(buckets) {
                 val threshold = 24.dp.toPx()
                 detectTapGestures { offset ->
@@ -347,7 +360,7 @@ private fun StreakCard(currentStreak: Int) {
         ) {
             Icon(
                 imageVector = Icons.Default.LocalFireDepartment,
-                contentDescription = null,
+                contentDescription = "Streak",
                 modifier = Modifier.size(32.dp),
                 tint = MaterialTheme.colorScheme.primary,
             )
@@ -376,6 +389,16 @@ private fun ActivityChart(weeklyActivity: List<WeekActivity>) {
 
     var selectedBarIndex by remember { mutableStateOf<Int?>(null) }
 
+    val activityDescription = remember(weeklyActivity) {
+        if (weeklyActivity.isEmpty()) "Activity chart with no data"
+        else buildString {
+            append("Weekly activity chart. ")
+            weeklyActivity.forEach { w ->
+                append("${w.weekLabel}: ${w.count} predictions. ")
+            }
+        }
+    }
+
     val primaryColor = MaterialTheme.colorScheme.primary
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface
     val surfaceVariantColor = MaterialTheme.colorScheme.surfaceVariant
@@ -393,6 +416,7 @@ private fun ActivityChart(weeklyActivity: List<WeekActivity>) {
         modifier = Modifier
             .fillMaxWidth()
             .height(160.dp)
+            .semantics { contentDescription = activityDescription }
             .pointerInput(weeklyActivity) {
                 if (weeklyActivity.isEmpty()) return@pointerInput
                 val chartLeftPx = 28.dp.toPx()

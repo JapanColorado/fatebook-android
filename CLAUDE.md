@@ -58,7 +58,7 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 
 **Screen composable pattern**: Each screen has a connected wrapper (calls `hiltViewModel()`) and a stateless `*Content` composable (takes state + callbacks). The `*Content` versions are what Paparazzi renders. Example: `FeedScreen` → `FeedScreenContent`.
 
-**CI**: `.github/workflows/ci.yml` runs three parallel jobs on every PR: lint, unit tests, screenshot verification.
+**CI**: `.github/workflows/ci.yml` runs four parallel jobs on every PR: lint, unit tests, screenshot verification, and release APK build.
 
 **Test fakes** (in `app/src/test/.../testutil/`):
 - `FakeFatebookApi` — implements `FatebookApi` interface, records calls
@@ -90,7 +90,7 @@ dev.russell.fatebook/
 
 ## What's Implemented
 
-- **Settings screen**: API key input (obscured), validation against real API, "Get key" link, notification time picker (clock dialog), Android 13+ notification permission request
+- **Settings screen**: API key input (obscured), validation against real API, "Get key" link, notification time picker (clock dialog), Android 13+ notification permission request, inline privacy summary + "Privacy Policy" link (GitHub Pages at `japancolorado.github.io/FatebookApp/privacy-policy`)
 - **Question feed**: LazyColumn with filter chips (Active / Ready to Resolve / Resolved), pull-to-refresh, search bar, empty states, shimmer skeleton loading, cursor-based pagination with infinite scroll
 - **Quick create**: Title field (auto-capitalized), date picker (default: tomorrow), probability slider with quick-set chips (10/25/50/75/90%)
 - **Question detail & resolve**: Tapping any card opens a unified detail bottom sheet (title, dates, notes, forecast, resolution, comments). Ready-to-resolve questions show YES/NO/Ambiguous buttons; active questions show ProbabilitySlider + "Update Forecast" button. Action row provides Edit (pencil), Delete (trash with confirmation dialog), Share (Android share intent), Open in Fatebook (external link), and Visibility toggle (eye icon with "Public"/"Private" label). Edit mode replaces read-only fields with editable TextFields + DatePicker. Comments section shows existing comments (with author name and date) and allows adding new ones. Comments are persisted in Room's `CommentEntity` table, synced from the `getQuestions` list API.
@@ -99,10 +99,11 @@ dev.russell.fatebook/
   - *Daily Reminder* (`daily_reminder` channel): Always fires, tapping opens Create screen.
   - *Ready to Resolve* (`ready_to_resolve` channel): Fires only when there are unresolved questions past their resolve-by date, showing the count. Tapping opens Feed with the "Ready to Resolve" filter pre-selected.
   - Separate channels allow users to independently mute each in Android settings. Separate notification IDs (1, 2) and PendingIntent request codes (0, 1) prevent collisions.
-- **Error handling**: Network errors (IOException) show a persistent `ErrorBanner` with retry button; other errors also use the banner with dismiss option.
+- **Error handling**: `FeedError` sealed interface classifies errors: `Network` (IOException), `Auth` (HTTP 401/403 — shows "Settings" button instead of "Retry"), `RateLimited` (HTTP 429), and `Other`. `ErrorBanner` supports custom action labels via `actionLabel`/`onAction` params. Retry uses exponential backoff (1s-16s cap). HTTP logging is conditional — `Level.BODY` in debug, `Level.NONE` in release (requires `buildConfig = true` in `build.gradle.kts`).
 - **Analytics screen**: Accessible via chart icon in feed TopAppBar. Shows Brier score (with help popup), calibration chart (selectable dots, 5% buckets), prediction streak tracker, and weekly activity bar chart (clickable bars). Uses ALL forecasts per question (stored in `ForecastEntity` table), not just the latest — matching the Fatebook website. `AnalyticsViewModel.init` calls `loadAllQuestions()` to fetch all pages before computing.
 - **Multi-option filtering**: Only BINARY questions shown; MULTIPLE_CHOICE and QUANTITY types are filtered out in the repository.
 - **Offline-first**: Room cache shows questions immediately, background API refresh
 - **Material You**: Dynamic color theming on Android 12+, dark mode support
 - **Navigation gate**: First launch → Settings; after API key → Feed
-- **ProGuard/R8**: Release builds use minification, resource shrinking, and targeted keep rules
+- **ProGuard/R8**: Release builds use minification, resource shrinking, and targeted keep rules. Release buildType uses debug signing config as fallback for CI builds.
+- **Accessibility**: ProbabilitySlider has semantics for screen readers. Calibration and activity charts provide text summaries via `Modifier.semantics`. Feed empty state on Active filter shows "No predictions yet / Tap + to create your first prediction".

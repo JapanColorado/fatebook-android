@@ -18,9 +18,12 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import retrofit2.HttpException
+import retrofit2.Response
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FeedViewModelTest {
@@ -472,5 +475,72 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         coVerify { repository.setSharedPublicly("q1", true, false) }
+    }
+
+    // --- HTTP error classification ---
+
+    @Test
+    fun `refresh sets Auth error on HttpException 401`() = runTest {
+        coEvery { repository.refresh() } throws HttpException(
+            Response.error<Any>(401, "".toResponseBody())
+        )
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        val error = vm.uiState.value.error
+        assertThat(error).isInstanceOf(FeedError.Auth::class.java)
+    }
+
+    @Test
+    fun `refresh sets Auth error on HttpException 403`() = runTest {
+        coEvery { repository.refresh() } throws HttpException(
+            Response.error<Any>(403, "".toResponseBody())
+        )
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        val error = vm.uiState.value.error
+        assertThat(error).isInstanceOf(FeedError.Auth::class.java)
+    }
+
+    @Test
+    fun `refresh sets RateLimited error on HttpException 429`() = runTest {
+        coEvery { repository.refresh() } throws HttpException(
+            Response.error<Any>(429, "".toResponseBody())
+        )
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        val error = vm.uiState.value.error
+        assertThat(error).isInstanceOf(FeedError.RateLimited::class.java)
+    }
+
+    @Test
+    fun `refresh sets Other error on HttpException 500`() = runTest {
+        coEvery { repository.refresh() } throws HttpException(
+            Response.error<Any>(500, "".toResponseBody())
+        )
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        val error = vm.uiState.value.error
+        assertThat(error).isInstanceOf(FeedError.Other::class.java)
+        assertThat(error?.message).contains("500")
     }
 }

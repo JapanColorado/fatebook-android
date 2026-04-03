@@ -29,6 +29,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Use debug signing for CI builds; override with real keystore for Play Store
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -43,6 +45,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

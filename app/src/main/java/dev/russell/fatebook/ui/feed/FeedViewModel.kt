@@ -8,6 +8,7 @@ import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.Resolution
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 import java.io.IOException
 import java.time.LocalDate
 import javax.inject.Inject
@@ -26,6 +28,8 @@ enum class FeedFilter { ACTIVE, READY_TO_RESOLVE, RESOLVED }
 sealed interface FeedError {
     val message: String
     data class Network(override val message: String) : FeedError
+    data class Auth(override val message: String) : FeedError
+    data class RateLimited(override val message: String) : FeedError
     data class Other(override val message: String) : FeedError
 }
 
@@ -63,6 +67,8 @@ data class FeedUiState(
 class FeedViewModel @Inject constructor(
     private val repository: QuestionRepository,
 ) : ViewModel() {
+
+    private var retryCount = 0
 
     private val _filter = MutableStateFlow(FeedFilter.ACTIVE)
     private val _isRefreshing = MutableStateFlow(false)
@@ -118,12 +124,18 @@ class FeedViewModel @Inject constructor(
 
     fun refresh() {
         viewModelScope.launch {
+            if (retryCount > 0) {
+                val delayMs = 1000L * (1 shl (retryCount - 1).coerceAtMost(4))
+                delay(delayMs)
+            }
             _isRefreshing.value = true
             _error.value = null
             try {
                 repository.refresh()
                 _hasMore.value = repository.hasMore()
+                retryCount = 0
             } catch (e: Exception) {
+                retryCount++
                 _error.value = classifyError(e, "Failed to load questions")
             } finally {
                 _isRefreshing.value = false
@@ -345,10 +357,14 @@ class FeedViewModel @Inject constructor(
     }
 
     private fun classifyError(e: Exception, fallback: String): FeedError {
-        val message = e.message ?: fallback
         return when (e) {
-            is IOException -> FeedError.Network(message)
-            else -> FeedError.Other(message)
+            is IOException -> FeedError.Network(e.message ?: fallback)
+            is HttpException -> when (e.code()) {
+                401, 403 -> FeedError.Auth("API key invalid or expired. Update it in Settings.")
+                429 -> FeedError.RateLimited("Too many requests. Please try again later.")
+                else -> FeedError.Other("Server error (${e.code()})")
+            }
+            else -> FeedError.Other(e.message ?: fallback)
         }
     }
 }

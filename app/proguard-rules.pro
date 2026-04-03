@@ -27,8 +27,9 @@
 -keep class dagger.hilt.** { *; }
 -keep class * extends dagger.hilt.internal.GeneratedComponent
 
-# EncryptedSharedPreferences
+# EncryptedSharedPreferences + Tink (Google's crypto library used internally)
 -keep class androidx.security.crypto.** { *; }
+-dontwarn com.google.errorprone.annotations.**
 
 # WorkManager + Hilt integration
 -keep class * extends androidx.work.ListenableWorker { *; }

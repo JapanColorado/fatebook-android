@@ -34,6 +34,8 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 ```
 
 - **Single source of truth**: `QuestionRepository` orchestrates API ↔ Room cache
+- **Set-diff refresh**: `QuestionRepository.refresh()` upserts response items and deletes questions not in the response, all inside one Room transaction (`Transactor` abstraction wraps `RoomDatabase.withTransaction`). FK CASCADE on `ForecastEntity`/`CommentEntity` cleans up children. Subscribers see exactly one Flow re-emission per refresh — never an empty-then-full flash.
+- **No refresh-after-mutation**: `addForecast`, `resolveQuestion`, `editQuestion`, and `setSharedPublicly` apply targeted DAO updates locally instead of round-tripping through the API for a fresh page. UI updates immediately; the network call only runs to inform the server.
 - **API key**: Stored in `EncryptedSharedPreferences` (hardware-backed on Pixel)
 - **Notification prefs**: Stored in Jetpack DataStore
 - **DI**: Hilt (modules in `di/`)
@@ -66,6 +68,7 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 - `FakeForecastDao` — in-memory forecast DAO
 - `FakeCommentDao` — in-memory comment DAO
 - `UserPreferences` is mocked with MockK (concrete class with Android deps)
+- `Transactor` is the abstraction that wraps `RoomDatabase.withTransaction` in production; in tests, pass `Transactor { block -> block() }` to run the block inline.
 
 ## Package Structure
 
@@ -100,7 +103,7 @@ dev.russell.fatebook/
   - *Ready to Resolve* (`ready_to_resolve` channel): Fires only when there are unresolved questions past their resolve-by date, showing the count. Tapping opens Feed with the "Ready to Resolve" filter pre-selected.
   - Separate channels allow users to independently mute each in Android settings. Separate notification IDs (1, 2) and PendingIntent request codes (0, 1) prevent collisions.
 - **Error handling**: `FeedError` sealed interface classifies errors: `Network` (IOException), `Auth` (HTTP 401/403 — shows "Settings" button instead of "Retry"), `RateLimited` (HTTP 429), and `Other`. `ErrorBanner` supports custom action labels via `actionLabel`/`onAction` params. Retry uses exponential backoff (1s-16s cap). HTTP logging is conditional — `Level.BODY` in debug, `Level.NONE` in release (requires `buildConfig = true` in `build.gradle.kts`).
-- **Analytics screen**: Accessible via chart icon in feed TopAppBar. Top row of three equal-weight stat cards: Forecasts (count), Brier (with help popup), Streak (with fire icon). Below: calibration chart (selectable dots, 5% buckets, ~1.25:1 aspect to fit tall phones) and an 11-week × 7-day activity heatmap (24dp cells, clickable, shows per-day count in a card below). Uses ALL forecasts per question (stored in `ForecastEntity` table), not just the latest — matching the Fatebook website. `AnalyticsViewModel.init` calls `loadAllQuestions()` to fetch all pages before computing. The heatmap window aligns to whole Mon–Sun weeks, anchored to the current week's Sunday.
+- **Analytics screen**: Accessible via chart icon in feed TopAppBar. Top row of three equal-weight stat cards: Forecasts (count), Brier (with help popup), Streak (with fire icon). Below: calibration chart (selectable dots, 5% buckets, ~1.25:1 aspect to fit tall phones) and an 11-week × 7-day activity heatmap (24dp cells, clickable, shows per-day count in a card below). Uses ALL forecasts per question (stored in `ForecastEntity` table), not just the latest — matching the Fatebook website. `AnalyticsViewModel` observes the existing Room cache; it does NOT eagerly paginate on init (that previously wiped the cache and stalled the UI). If users want full-history analytics, they currently need to scroll the feed to populate more pages — explicit refresh-all is a planned follow-up. The heatmap window aligns to whole Mon–Sun weeks, anchored to the current week's Sunday.
 - **Multi-option filtering**: Only BINARY questions shown; MULTIPLE_CHOICE and QUANTITY types are filtered out in the repository.
 - **Offline-first**: Room cache shows questions immediately, background API refresh
 - **Material You**: Dynamic color theming on Android 12+, dark mode support

@@ -16,6 +16,17 @@
 
 ## Archive
 
+### v0.2.1 -- Performance
+- [x] Set-diff refresh inside a single Room transaction (no more empty→full flash on every refresh)
+- [x] Replace post-mutation `refresh()` calls with targeted DAO updates (addForecast, resolveQuestion, editQuestion, setSharedPublicly)
+- [x] AnalyticsViewModel observes the cache instead of eagerly paginating all pages on init
+- [x] Split FeedViewModel Flow chain so filter/search don't restart the whole pipeline
+- [x] Mark Question/Forecast/Comment as `@Immutable` for Compose stability
+- [x] Add `contentType` to LazyColumn items so compositions are reused during scroll
+- [x] Hoist DateTimeFormatters in QuestionCard to file scope
+- [x] Use `Card(onClick = ...)` with a remembered click handler instead of inline lambda + `Modifier.clickable`
+- [x] Index `resolved` + `resolveByEpochMs` columns on questions (DB version 7→8)
+
 ### v0.3 -- Question Management & Deep Links
 - [x] Fix: "Resolves today" shown as 22 hr overdue (compare dates at day level, not instant level)
 - [x] Add comments to questions (via API addComment endpoint)

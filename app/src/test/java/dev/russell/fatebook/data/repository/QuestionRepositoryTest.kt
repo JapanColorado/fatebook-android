@@ -2,6 +2,7 @@ package dev.russell.fatebook.data.repository
 
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
+import dev.russell.fatebook.data.local.Transactor
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.dto.ForecastDto
 import dev.russell.fatebook.data.remote.dto.QuestionsResponseDto
@@ -36,22 +37,38 @@ class QuestionRepositoryTest {
         commentDao = FakeCommentDao()
         prefs = mockk(relaxed = true)
         every { prefs.apiKey } returns "test-api-key"
-        repository = QuestionRepository(api, dao, forecastDao, commentDao, prefs)
+        // Tests run the transaction block inline; production wraps it in a Room transaction.
+        val transactor = Transactor { block -> block() }
+        repository = QuestionRepository(api, dao, forecastDao, commentDao, prefs, transactor)
     }
 
     // --- refresh ---
 
     @Test
-    fun `refresh clears and replaces local cache`() = runTest {
+    fun `refresh upserts response items into local cache`() = runTest {
         val dto1 = TestData.questionDto(id = "q1")
         val dto2 = TestData.questionDto(id = "q2")
         api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto1, dto2)) }
 
         repository.refresh()
 
-        assertThat(dao.deleteAllCallCount).isEqualTo(1)
         assertThat(dao.storedQuestions).hasSize(2)
         assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2")
+        // refresh no longer wipes the table — it set-diffs.
+        assertThat(dao.deleteAllCallCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `refresh prunes questions absent from response`() = runTest {
+        // Seed two questions, but the API returns only one.
+        dao.upsertAll(listOf(TestData.questionEntity(id = "stale"), TestData.questionEntity(id = "keep")))
+        api.getQuestionsResponse = {
+            TestData.questionsResponse(items = listOf(TestData.questionDto(id = "keep")))
+        }
+
+        repository.refresh()
+
+        assertThat(dao.storedQuestions.map { it.id }).containsExactly("keep")
     }
 
     @Test
@@ -88,7 +105,7 @@ class QuestionRepositoryTest {
     // --- loadMore ---
 
     @Test
-    fun `loadMore appends to cache without deleting`() = runTest {
+    fun `loadMore appends to cache without pruning`() = runTest {
         // First page
         api.getQuestionsResponse = { cursor ->
             if (cursor == null) TestData.questionsResponse(
@@ -100,11 +117,12 @@ class QuestionRepositoryTest {
             )
         }
         repository.refresh()
-        val deleteCountAfterRefresh = dao.deleteAllCallCount
+        val pruneCountAfterRefresh = dao.deleteByIdsNotInCallCount
 
         repository.loadMore()
 
-        assertThat(dao.deleteAllCallCount).isEqualTo(deleteCountAfterRefresh)
+        // loadMore must NOT prune — that would remove first-page questions.
+        assertThat(dao.deleteByIdsNotInCallCount).isEqualTo(pruneCountAfterRefresh)
         assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2")
     }
 
@@ -218,7 +236,14 @@ class QuestionRepositoryTest {
     }
 
     @Test
-    fun `addForecast calls API with correct params and refreshes`() = runTest {
+    fun `addForecast calls API with correct params and applies targeted update`() = runTest {
+        // Seed an existing question so the targeted update has something to touch.
+        dao.upsertAll(
+            listOf(
+                TestData.questionEntity(id = "q1", latestForecast = 0.5, latestForecastAtEpochMs = 0L),
+            )
+        )
+
         repository.addForecast("q1", 0.8)
 
         assertThat(api.addForecastCalls).hasSize(1)
@@ -226,8 +251,10 @@ class QuestionRepositoryTest {
         assertThat(qId).isEqualTo("q1")
         assertThat(forecast).isEqualTo(0.8)
         assertThat(key).isEqualTo("test-api-key")
-        // Verify refresh was called after addForecast
-        assertThat(api.getQuestionsCalls).isNotEmpty()
+        // No refresh after addForecast — the local row is updated in place.
+        assertThat(api.getQuestionsCalls).isEmpty()
+        assertThat(dao.storedQuestions.first { it.id == "q1" }.latestForecast).isEqualTo(0.8)
+        assertThat(forecastDao.storedForecasts.map { it.questionId }).contains("q1")
     }
 
     // --- resolveQuestion ---
@@ -290,9 +317,35 @@ class QuestionRepositoryTest {
     }
 
     @Test
-    fun `refresh clears old forecasts`() = runTest {
+    fun `refresh replaces forecasts per-question, not globally`() = runTest {
+        // Seed a forecast for an "untouched" question that should NOT be wiped.
+        forecastDao.upsertAll(
+            listOf(
+                dev.russell.fatebook.data.local.ForecastEntity(
+                    questionId = "untouched", forecast = 0.5, createdAtEpochMs = 1L,
+                )
+            )
+        )
+        api.getQuestionsResponse = {
+            TestData.questionsResponse(
+                items = listOf(
+                    TestData.questionDto(
+                        id = "q1",
+                        forecasts = listOf(ForecastDto("u1", 0.7, "2020-01-01T00:00:00Z", null)),
+                    )
+                )
+            )
+        }
+
         repository.refresh()
-        assertThat(forecastDao.deleteAllCallCount).isEqualTo(1)
+
+        // Global wipe never happens any more.
+        assertThat(forecastDao.deleteAllCallCount).isEqualTo(0)
+        // The untouched question's forecast survives (in production it'd be cascade-deleted by FK
+        // when its parent question is pruned, but the fake DAO doesn't model FKs).
+        assertThat(forecastDao.storedForecasts.map { it.questionId }).contains("untouched")
+        // The refreshed question's forecasts are present.
+        assertThat(forecastDao.storedForecasts.any { it.questionId == "q1" }).isTrue()
     }
 
     // --- loadAllQuestions ---

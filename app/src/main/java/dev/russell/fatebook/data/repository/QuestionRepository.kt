@@ -6,6 +6,7 @@ import dev.russell.fatebook.data.local.ForecastDao
 import dev.russell.fatebook.data.local.ForecastEntity
 import dev.russell.fatebook.data.local.QuestionDao
 import dev.russell.fatebook.data.local.QuestionEntity
+import dev.russell.fatebook.data.local.Transactor
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.FatebookApi
 import dev.russell.fatebook.data.remote.dto.CommentDto
@@ -31,6 +32,7 @@ class QuestionRepository @Inject constructor(
     private val forecastDao: ForecastDao,
     private val commentDao: CommentDao,
     private val prefs: UserPreferences,
+    private val transactor: Transactor,
 ) {
     private var nextCursor: Int? = null
 
@@ -69,25 +71,17 @@ class QuestionRepository @Inject constructor(
     fun observeAllForecasts(): Flow<List<ForecastEntity>> =
         forecastDao.observeAll()
 
-    /** Fetch first page from API and replace local cache. */
+    /**
+     * Fetch first page from API and merge into local cache as a single transaction.
+     * Questions not present in the response are pruned (set-diff). Forecasts and
+     * comments cascade-delete via foreign key.
+     */
     suspend fun refresh(): List<Question> {
         val response = api.getQuestions()
         nextCursor = response.nextCursor
         val binaryOnly = response.items.filter { it.isBinary }
-        val entities = binaryOnly.map { it.toEntity() }
-        dao.deleteAll()
-        forecastDao.deleteAll()
-        commentDao.deleteAll()
-        dao.upsertAll(entities)
-        forecastDao.upsertAll(binaryOnly.flatMap { it.toForecastEntities() })
-        commentDao.upsertAll(binaryOnly.flatMap { it.toCommentEntities() })
-        // Extract user's display name from forecast data (all forecasts are the user's own)
-        if (prefs.displayName == null) {
-            val name = binaryOnly.firstNotNullOfOrNull { dto ->
-                dto.forecasts?.firstNotNullOfOrNull { it.user?.name }
-            }
-            if (name != null) prefs.displayName = name
-        }
+        commitDtos(binaryOnly, prune = true)
+        captureDisplayName(binaryOnly)
         return binaryOnly.map { it.toDomain() }
     }
 
@@ -97,21 +91,59 @@ class QuestionRepository @Inject constructor(
         val response = api.getQuestions(cursor = cursor)
         nextCursor = response.nextCursor
         val binaryOnly = response.items.filter { it.isBinary }
-        val entities = binaryOnly.map { it.toEntity() }
-        dao.upsertAll(entities)
-        forecastDao.upsertAll(binaryOnly.flatMap { it.toForecastEntities() })
-        commentDao.upsertAll(binaryOnly.flatMap { it.toCommentEntities() })
+        commitDtos(binaryOnly, prune = false)
         return response.nextCursor != null
     }
 
     fun hasMore(): Boolean = nextCursor != null
 
-    /** Fetch all pages from API, populating the local cache. */
+    /**
+     * Fetch all pages from API, then merge into the cache as a single transaction.
+     * Collecting first means subscribers only see one update at the end, not one per page.
+     */
     suspend fun loadAllQuestions() {
-        refresh()
-        while (hasMore()) {
-            loadMore()
+        val collected = mutableListOf<QuestionDto>()
+        var cursor: Int? = null
+        do {
+            val response = api.getQuestions(cursor = cursor)
+            collected += response.items.filter { it.isBinary }
+            cursor = response.nextCursor
+            nextCursor = cursor
+        } while (cursor != null)
+        commitDtos(collected, prune = true)
+        captureDisplayName(collected)
+    }
+
+    /**
+     * Atomic set-diff merge: upsert all [dtos] and (optionally) delete questions
+     * not in [dtos]. Forecasts and comments for each refreshed question are
+     * replaced wholesale, but only within the affected questions — others are
+     * left untouched.
+     */
+    private suspend fun commitDtos(dtos: List<QuestionDto>, prune: Boolean) {
+        val questionEntities = dtos.map { it.toEntity() }
+        val keepIds = dtos.map { it.id }
+        transactor.transact {
+            dao.upsertAll(questionEntities)
+            if (prune) {
+                // CASCADE on FK removes orphaned forecasts/comments for pruned questions.
+                dao.deleteByIdsNotIn(keepIds)
+            }
+            for (dto in dtos) {
+                forecastDao.deleteByQuestionId(dto.id)
+                commentDao.deleteByQuestionId(dto.id)
+            }
+            forecastDao.upsertAll(dtos.flatMap { it.toForecastEntities() })
+            commentDao.upsertAll(dtos.flatMap { it.toCommentEntities() })
         }
+    }
+
+    private fun captureDisplayName(dtos: List<QuestionDto>) {
+        if (prefs.displayName != null) return
+        val name = dtos.firstNotNullOfOrNull { dto ->
+            dto.forecasts?.firstNotNullOfOrNull { it.user?.name }
+        }
+        if (name != null) prefs.displayName = name
     }
 
     suspend fun createQuestion(
@@ -123,7 +155,8 @@ class QuestionRepository @Inject constructor(
         val url = api.createQuestion(title, resolveByStr, forecast)
         // Record that user made a prediction today
         prefs.setLastPredictionDate(System.currentTimeMillis())
-        // Refresh cache to include the new question
+        // Refresh cache to include the new question (server-assigned ID isn't returned).
+        // The new refresh is non-destructive, so subscribers see one stable update.
         refresh()
         return url
     }
@@ -135,9 +168,20 @@ class QuestionRepository @Inject constructor(
             forecast = forecast,
             apiKey = apiKey,
         )
-        // Record that user made a prediction today
         prefs.setLastPredictionDate(System.currentTimeMillis())
-        refresh()
+        val nowMs = System.currentTimeMillis()
+        transactor.transact {
+            dao.updateLatestForecast(questionId, forecast, nowMs)
+            forecastDao.upsertAll(
+                listOf(
+                    ForecastEntity(
+                        questionId = questionId,
+                        forecast = forecast,
+                        createdAtEpochMs = nowMs,
+                    ),
+                ),
+            )
+        }
     }
 
     suspend fun resolveQuestion(questionId: String, resolution: Resolution) {
@@ -147,7 +191,7 @@ class QuestionRepository @Inject constructor(
             resolution = resolution.apiValue,
             apiKey = apiKey,
         )
-        refresh()
+        dao.updateResolution(questionId, resolution.apiValue)
     }
 
     suspend fun validateApiKey(): Boolean {
@@ -159,7 +203,7 @@ class QuestionRepository @Inject constructor(
         }
     }
 
-    /** Edit question fields. Only non-null params are sent to the API. */
+    /** Edit question fields. Only non-null params are sent to the API and applied locally. */
     suspend fun editQuestion(
         questionId: String,
         title: String? = null,
@@ -174,7 +218,13 @@ class QuestionRepository @Inject constructor(
             notes = notes,
             apiKey = apiKey,
         )
-        refresh()
+        dao.updateFields(
+            questionId = questionId,
+            title = title,
+            resolveByEpochMs = resolveBy?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli(),
+            notes = notes,
+            hasNotes = if (notes != null) 1 else 0,
+        )
     }
 
     /** Delete a question. */
@@ -227,7 +277,7 @@ class QuestionRepository @Inject constructor(
             unlisted = unlisted,
             apiKey = apiKey,
         )
-        refresh()
+        dao.updateSharing(questionId, sharedPublicly, unlisted)
     }
 
     // --- Mappers ---

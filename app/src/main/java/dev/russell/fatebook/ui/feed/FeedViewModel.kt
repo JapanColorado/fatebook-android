@@ -9,12 +9,12 @@ import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.Resolution
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -80,34 +80,37 @@ class FeedViewModel @Inject constructor(
     private val _isLoadingMore = MutableStateFlow(false)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val uiState: StateFlow<FeedUiState> = combine(_filter, _searchQuery) { filter, query ->
-        filter to query
-    }.flatMapLatest { (filter, query) ->
-        val questionsFlow = when (filter) {
-            FeedFilter.ACTIVE -> repository.observeActive()
-            FeedFilter.READY_TO_RESOLVE -> repository.observeReadyToResolve()
-            FeedFilter.RESOLVED -> repository.observeResolved()
-        }.map { questions ->
+    private val questionsFlow: Flow<List<Question>> = _filter
+        .flatMapLatest { filter ->
+            when (filter) {
+                FeedFilter.ACTIVE -> repository.observeActive()
+                FeedFilter.READY_TO_RESOLVE -> repository.observeReadyToResolve()
+                FeedFilter.RESOLVED -> repository.observeResolved()
+            }
+        }
+        .combine(_searchQuery) { questions, query ->
             if (query.isBlank()) questions
             else questions.filter { it.title.contains(query, ignoreCase = true) }
         }
-        combine(
-            questionsFlow, _isRefreshing, _error,
-            _detail, _isInitialLoad, _hasMore, _isLoadingMore,
-        ) { args ->
-            @Suppress("UNCHECKED_CAST")
-            FeedUiState(
-                questions = args[0] as List<Question>,
-                filter = filter,
-                isRefreshing = args[1] as Boolean,
-                error = args[2] as FeedError?,
-                detail = args[3] as DetailSheetState,
-                searchQuery = query,
-                isInitialLoad = args[4] as Boolean,
-                hasMore = args[5] as Boolean,
-                isLoadingMore = args[6] as Boolean,
-            )
-        }
+
+    val uiState: StateFlow<FeedUiState> = combine(
+        listOf(
+            questionsFlow, _filter, _isRefreshing, _error, _detail,
+            _searchQuery, _isInitialLoad, _hasMore, _isLoadingMore,
+        )
+    ) { args ->
+        @Suppress("UNCHECKED_CAST")
+        FeedUiState(
+            questions = args[0] as List<Question>,
+            filter = args[1] as FeedFilter,
+            isRefreshing = args[2] as Boolean,
+            error = args[3] as FeedError?,
+            detail = args[4] as DetailSheetState,
+            searchQuery = args[5] as String,
+            isInitialLoad = args[6] as Boolean,
+            hasMore = args[7] as Boolean,
+            isLoadingMore = args[8] as Boolean,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FeedUiState())
 
     init {

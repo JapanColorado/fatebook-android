@@ -282,10 +282,14 @@ fun FeedScreenContent(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        items(state.questions, key = { it.id }) { question ->
+                        items(
+                            state.questions,
+                            key = { it.id },
+                            contentType = { "question" },
+                        ) { question ->
                             QuestionCard(
                                 question = question,
-                                onClick = { onQuestionClick(question) },
+                                onClick = onQuestionClick,
                             )
                         }
                         if (state.isLoadingMore) {

@@ -5,11 +5,8 @@ import dev.russell.fatebook.data.local.ForecastEntity
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
-import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
-import io.mockk.just
-import io.mockk.Runs
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -39,7 +36,6 @@ class AnalyticsViewModelTest {
         every { repository.observeAll() } returns flowOf(emptyList())
         every { repository.observeResolved() } returns flowOf(emptyList())
         every { repository.observeAllForecasts() } returns flowOf(emptyList())
-        coEvery { repository.loadAllQuestions() } just Runs
     }
 
     @After
@@ -227,11 +223,13 @@ class AnalyticsViewModelTest {
     // --- ViewModel integration ---
 
     @Test
-    fun `init triggers loadAllQuestions`() = runTest {
-        val vm = createViewModel()
+    fun `init does not eagerly fetch all pages`() = runTest {
+        createViewModel()
         advanceUntilIdle()
 
-        coVerify { repository.loadAllQuestions() }
+        // AnalyticsViewModel observes the existing cache; it must NOT trigger
+        // a full network paginate-all on construction (was a major source of jank).
+        coVerify(exactly = 0) { repository.loadAllQuestions() }
     }
 
     @Test

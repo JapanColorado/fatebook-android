@@ -1,6 +1,5 @@
 package dev.russell.fatebook.ui.components
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +10,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -32,13 +32,13 @@ import java.time.temporal.ChronoUnit
 @Composable
 fun QuestionCard(
     question: Question,
-    onClick: () -> Unit,
+    onClick: (Question) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val cardClick = remember(question.id, onClick) { { onClick(question) } }
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        onClick = cardClick,
+        modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
@@ -118,19 +118,20 @@ fun QuestionCard(
     }
 }
 
+private val MONTH_DAY = DateTimeFormatter.ofPattern("MMM d")
+private val MONTH_DAY_YEAR = DateTimeFormatter.ofPattern("MMM d, yyyy")
+
 private fun timeAgo(instant: Instant): String {
     val ago = Duration.between(instant, Instant.now())
     return when {
-        ago.toDays() > 30 -> instant.atZone(ZoneId.systemDefault())
-            .format(DateTimeFormatter.ofPattern("MMM d"))
+        ago.toDays() > 30 -> instant.atZone(ZoneId.systemDefault()).format(MONTH_DAY)
         ago.toDays() > 0 -> "${ago.toDays()}d ago"
         ago.toHours() > 0 -> "${ago.toHours()}h ago"
         else -> "just now"
     }
 }
 
-private fun absoluteDate(date: LocalDate): String =
-    date.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+private fun absoluteDate(date: LocalDate): String = date.format(MONTH_DAY_YEAR)
 
 private fun relativeDate(date: LocalDate): String {
     val today = LocalDate.now()
@@ -142,6 +143,6 @@ private fun relativeDate(date: LocalDate): String {
         daysDiff == 1L -> "tomorrow"
         daysDiff < 7 -> "in ${daysDiff}d"
         daysDiff < 30 -> "in ${daysDiff / 7}w"
-        else -> date.format(DateTimeFormatter.ofPattern("MMM d"))
+        else -> date.format(MONTH_DAY)
     }
 }

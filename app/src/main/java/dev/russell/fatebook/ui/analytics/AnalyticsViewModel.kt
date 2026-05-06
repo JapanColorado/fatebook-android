@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -43,16 +42,6 @@ class AnalyticsViewModel @Inject constructor(
     private val repository: QuestionRepository,
 ) : ViewModel() {
 
-    init {
-        viewModelScope.launch {
-            try {
-                repository.loadAllQuestions()
-            } catch (_: Exception) {
-                // Analytics can still show cached data if network fails
-            }
-        }
-    }
-
     val uiState: StateFlow<AnalyticsUiState> = combine(
         repository.observeAll(),
         repository.observeResolved(),
@@ -68,7 +57,8 @@ class AnalyticsViewModel @Inject constructor(
             dailyActivity = computeDailyActivity(allForecasts),
             isLoading = false,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalyticsUiState())
+    }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalyticsUiState())
 
     companion object {
 

@@ -1,10 +1,12 @@
 package dev.russell.fatebook.domain.model
 
+import androidx.compose.runtime.Immutable
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import kotlin.math.roundToInt
 
+@Immutable
 data class Question(
     val id: String,
     val title: String,
@@ -39,12 +41,14 @@ data class Question(
         get() = yourLatestForecast?.let { (it * 100).roundToInt() }
 }
 
+@Immutable
 data class Forecast(
     val userId: String,
     val forecast: Double?,
     val createdAt: Instant,
 )
 
+@Immutable
 data class Comment(
     val id: String,
     val userId: String,

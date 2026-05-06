@@ -16,6 +16,9 @@ class FakeQuestionDao : QuestionDao {
     var deleteAllCallCount = 0
         private set
 
+    var deleteByIdsNotInCallCount = 0
+        private set
+
     override fun observeAll(): Flow<List<QuestionEntity>> =
         _questions.map { it.sortedBy { q -> q.resolveByEpochMs } }
 
@@ -56,7 +59,63 @@ class FakeQuestionDao : QuestionDao {
         _questions.value = _questions.value.filter { it.id != questionId }
     }
 
+    override suspend fun deleteByIdsNotIn(keepIds: List<String>) {
+        deleteByIdsNotInCallCount++
+        _questions.value = _questions.value.filter { it.id in keepIds }
+    }
+
     override suspend fun getById(questionId: String): QuestionEntity? {
         return _questions.value.find { it.id == questionId }
+    }
+
+    override suspend fun getAllIds(): List<String> =
+        _questions.value.map { it.id }
+
+    override suspend fun updateLatestForecast(
+        questionId: String,
+        forecast: Double,
+        forecastAtEpochMs: Long,
+    ) {
+        _questions.value = _questions.value.map {
+            if (it.id == questionId) it.copy(
+                latestForecast = forecast,
+                latestForecastAtEpochMs = forecastAtEpochMs,
+            ) else it
+        }
+    }
+
+    override suspend fun updateResolution(questionId: String, resolution: String) {
+        _questions.value = _questions.value.map {
+            if (it.id == questionId) it.copy(resolved = true, resolution = resolution) else it
+        }
+    }
+
+    override suspend fun updateFields(
+        questionId: String,
+        title: String?,
+        resolveByEpochMs: Long?,
+        notes: String?,
+        hasNotes: Int,
+    ) {
+        _questions.value = _questions.value.map {
+            if (it.id == questionId) it.copy(
+                title = title ?: it.title,
+                resolveByEpochMs = resolveByEpochMs ?: it.resolveByEpochMs,
+                notes = if (hasNotes == 1) notes else it.notes,
+            ) else it
+        }
+    }
+
+    override suspend fun updateSharing(
+        questionId: String,
+        sharedPublicly: Boolean,
+        unlisted: Boolean,
+    ) {
+        _questions.value = _questions.value.map {
+            if (it.id == questionId) it.copy(
+                sharedPublicly = sharedPublicly,
+                unlisted = unlisted,
+            ) else it
+        }
     }
 }

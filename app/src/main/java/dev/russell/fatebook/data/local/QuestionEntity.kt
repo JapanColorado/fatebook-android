@@ -1,9 +1,16 @@
 package dev.russell.fatebook.data.local
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "questions")
+@Entity(
+    tableName = "questions",
+    indices = [
+        Index("resolved"),
+        Index("resolveByEpochMs"),
+    ],
+)
 data class QuestionEntity(
     @PrimaryKey val id: String,
     val title: String,

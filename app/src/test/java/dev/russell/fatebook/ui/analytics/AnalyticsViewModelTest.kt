@@ -196,10 +196,10 @@ class AnalyticsViewModelTest {
         assertThat(streak).isEqualTo(1)
     }
 
-    // --- Weekly Activity ---
+    // --- Daily Activity ---
 
     @Test
-    fun `weekly activity counts forecasts per week`() {
+    fun `daily activity counts forecasts per day`() {
         val today = LocalDate.now()
         val zone = ZoneId.systemDefault()
         val todayMs = today.atStartOfDay(zone).toInstant().toEpochMilli()
@@ -208,10 +208,20 @@ class AnalyticsViewModelTest {
             forecast("q1", 0.6, todayMs),
             forecast("q2", 0.7, todayMs),
         )
-        val activity = AnalyticsViewModel.computeWeeklyActivity(forecasts)
-        assertThat(activity).hasSize(12)
-        val lastWeekCount = activity.last().count
-        assertThat(lastWeekCount).isEqualTo(3)
+        val activity = AnalyticsViewModel.computeDailyActivity(forecasts)
+        assertThat(activity).hasSize(77)
+        val todayEntry = activity.firstOrNull { it.date == today }
+        assertThat(todayEntry).isNotNull()
+        assertThat(todayEntry!!.count).isEqualTo(3)
+    }
+
+    @Test
+    fun `daily activity window ends at the Sunday of the current week`() {
+        val activity = AnalyticsViewModel.computeDailyActivity(emptyList())
+        val today = LocalDate.now()
+        assertThat(activity.last().date.dayOfWeek).isEqualTo(java.time.DayOfWeek.SUNDAY)
+        assertThat(activity.last().date).isAtLeast(today)
+        assertThat(activity.first().date.dayOfWeek).isEqualTo(java.time.DayOfWeek.MONDAY)
     }
 
     // --- ViewModel integration ---

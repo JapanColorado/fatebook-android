@@ -19,7 +19,7 @@ An unofficial Android client for [Fatebook](https://fatebook.io), the prediction
 - **Resolve flow** — YES / NO / Ambiguous buttons for questions past their resolve date
 - **Update forecasts** — slider in the detail sheet to revise your probability on active questions
 - **Comments** — view and add comments on any question, synced from the API and persisted in Room
-- **Analytics** — Brier score, calibration chart, prediction streak, and weekly activity chart
+- **Analytics** — total forecasts, Brier score, prediction streak, calibration chart, and an 11-week activity heatmap
 - **Notifications** — two independent channels: a daily reminder (always fires) and a ready-to-resolve alert (fires when overdue questions exist)
 - **Offline-first** — Room cache shows questions immediately; background API sync
 - **Material You** — dynamic color theming on Android 12+, dark mode support

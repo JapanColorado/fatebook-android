@@ -15,7 +15,6 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 data class CalibrationBucket(
@@ -25,8 +24,8 @@ data class CalibrationBucket(
     val count: Int,
 )
 
-data class WeekActivity(
-    val weekLabel: String,
+data class DayActivity(
+    val date: LocalDate,
     val count: Int,
 )
 
@@ -35,7 +34,7 @@ data class AnalyticsUiState(
     val totalForecasts: Int = 0,
     val calibrationBuckets: List<CalibrationBucket> = emptyList(),
     val currentStreak: Int = 0,
-    val weeklyActivity: List<WeekActivity> = emptyList(),
+    val dailyActivity: List<DayActivity> = emptyList(),
     val isLoading: Boolean = true,
 )
 
@@ -66,7 +65,7 @@ class AnalyticsViewModel @Inject constructor(
             totalForecasts = countScoredForecasts(resolvedQuestions, forecastsByQuestion),
             calibrationBuckets = computeCalibrationBuckets(resolvedQuestions, forecastsByQuestion),
             currentStreak = computeStreak(allForecasts),
-            weeklyActivity = computeWeeklyActivity(allForecasts),
+            dailyActivity = computeDailyActivity(allForecasts),
             isLoading = false,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalyticsUiState())
@@ -154,26 +153,30 @@ class AnalyticsViewModel @Inject constructor(
             return streak
         }
 
-        fun computeWeeklyActivity(allForecasts: List<ForecastEntity>): List<WeekActivity> {
-            val now = LocalDate.now()
-            val weekFormatter = DateTimeFormatter.ofPattern("MMM d")
+        /**
+         * Returns a 77-day window (11 weeks × 7 days) ending at the Sunday of the current week.
+         *
+         * Aligning to whole Monday–Sunday weeks produces a rectangular 11×7 grid that the
+         * heatmap can render with clean weekday row labels. Today falls within the *last* column.
+         */
+        fun computeDailyActivity(allForecasts: List<ForecastEntity>): List<DayActivity> {
+            val today = LocalDate.now()
+            val zone = ZoneId.systemDefault()
 
-            val weeks = (0 until 12).map { weeksAgo ->
-                now.minusWeeks(11L - weeksAgo).with(java.time.DayOfWeek.MONDAY)
-            }
+            // Find the Sunday that ends the current week (or today if today is Sunday).
+            val daysUntilSunday = (java.time.DayOfWeek.SUNDAY.value - today.dayOfWeek.value + 7) % 7
+            val windowEnd = today.plusDays(daysUntilSunday.toLong())
+            val windowStart = windowEnd.minusDays(76)
 
-            return weeks.map { weekStart ->
-                val weekEnd = weekStart.plusDays(7)
-                val count = allForecasts.count { f ->
-                    val forecastDate = Instant.ofEpochMilli(f.createdAtEpochMs)
-                        .atZone(ZoneId.systemDefault())
-                        .toLocalDate()
-                    !forecastDate.isBefore(weekStart) && forecastDate.isBefore(weekEnd)
+            val countsByDate: Map<LocalDate, Int> = allForecasts
+                .groupingBy { f ->
+                    Instant.ofEpochMilli(f.createdAtEpochMs).atZone(zone).toLocalDate()
                 }
-                WeekActivity(
-                    weekLabel = weekStart.format(weekFormatter),
-                    count = count,
-                )
+                .eachCount()
+
+            return (0..76).map { offset ->
+                val date = windowStart.plusDays(offset.toLong())
+                DayActivity(date = date, count = countsByDate[date] ?: 0)
             }
         }
     }

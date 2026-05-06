@@ -5,10 +5,11 @@ import app.cash.paparazzi.Paparazzi
 import dev.russell.fatebook.ui.analytics.AnalyticsScreenContent
 import dev.russell.fatebook.ui.analytics.AnalyticsUiState
 import dev.russell.fatebook.ui.analytics.CalibrationBucket
-import dev.russell.fatebook.ui.analytics.WeekActivity
+import dev.russell.fatebook.ui.analytics.DayActivity
 import dev.russell.fatebook.ui.theme.FatebookTheme
 import org.junit.Rule
 import org.junit.Test
+import java.time.LocalDate
 
 class AnalyticsScreenScreenshotTest {
 
@@ -39,9 +40,7 @@ class AnalyticsScreenScreenshotTest {
                         totalForecasts = 0,
                         calibrationBuckets = emptyList(),
                         currentStreak = 0,
-                        weeklyActivity = (0 until 12).map {
-                            WeekActivity(weekLabel = "W$it", count = 0)
-                        },
+                        dailyActivity = emptyHeatmap(),
                     ),
                 )
             }
@@ -73,20 +72,7 @@ class AnalyticsScreenScreenshotTest {
                             CalibrationBucket("95-100%", 0.975f, 0.96f, 2),
                         ),
                         currentStreak = 7,
-                        weeklyActivity = listOf(
-                            WeekActivity("Jan 6", 3),
-                            WeekActivity("Jan 13", 5),
-                            WeekActivity("Jan 20", 2),
-                            WeekActivity("Jan 27", 7),
-                            WeekActivity("Feb 3", 4),
-                            WeekActivity("Feb 10", 6),
-                            WeekActivity("Feb 17", 1),
-                            WeekActivity("Feb 24", 8),
-                            WeekActivity("Mar 3", 5),
-                            WeekActivity("Mar 10", 3),
-                            WeekActivity("Mar 17", 9),
-                            WeekActivity("Mar 24", 6),
-                        ),
+                        dailyActivity = sampleHeatmap(),
                     ),
                 )
             }
@@ -108,22 +94,47 @@ class AnalyticsScreenScreenshotTest {
                             CalibrationBucket("80-85%", 0.825f, 0.78f, 5),
                         ),
                         currentStreak = 3,
-                        weeklyActivity = listOf(
-                            WeekActivity("Jan 6", 2),
-                            WeekActivity("Jan 13", 4),
-                            WeekActivity("Jan 20", 1),
-                            WeekActivity("Jan 27", 3),
-                            WeekActivity("Feb 3", 5),
-                            WeekActivity("Feb 10", 2),
-                            WeekActivity("Feb 17", 0),
-                            WeekActivity("Feb 24", 3),
-                            WeekActivity("Mar 3", 4),
-                            WeekActivity("Mar 10", 1),
-                            WeekActivity("Mar 17", 6),
-                            WeekActivity("Mar 24", 2),
-                        ),
+                        dailyActivity = sparseHeatmap(),
                     ),
                 )
+            }
+        }
+    }
+
+    private companion object {
+        // Fixed-date window ensures reproducible goldens: Jan 27 2025 (Mon) – Apr 13 2025 (Sun).
+        // All dates are safely in the past so ActivityHeatmap's future-date check is inert.
+        val WINDOW_START: LocalDate = LocalDate.of(2025, 1, 27)
+
+        fun buildHeatmap(countForOffset: (Int) -> Int): List<DayActivity> =
+            (0..76).map { offset ->
+                DayActivity(
+                    date = WINDOW_START.plusDays(offset.toLong()),
+                    count = countForOffset(offset),
+                )
+            }
+
+        fun emptyHeatmap(): List<DayActivity> = buildHeatmap { 0 }
+
+        fun sampleHeatmap(): List<DayActivity> = buildHeatmap { i ->
+            // Pseudo-random-but-stable pattern showing a mix of inactive, light, and heavy days.
+            when (i % 7) {
+                0 -> if (i % 2 == 0) 2 else 0
+                1 -> (i % 5)
+                2 -> 0
+                3 -> (i % 9).coerceAtLeast(1)
+                4 -> if (i > 40) 6 else 1
+                5 -> 3
+                else -> 0
+            }
+        }
+
+        fun sparseHeatmap(): List<DayActivity> = buildHeatmap { i ->
+            when {
+                i % 11 == 0 -> 4
+                i % 5 == 0 -> 2
+                i % 3 == 0 -> 1
+                else -> 0
             }
         }
     }

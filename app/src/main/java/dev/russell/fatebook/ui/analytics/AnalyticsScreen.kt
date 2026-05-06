@@ -1,19 +1,25 @@
 package dev.russell.fatebook.ui.analytics
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -28,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -39,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -51,6 +59,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -97,79 +108,125 @@ fun AnalyticsScreenContent(
                     .fillMaxSize()
                     .padding(padding)
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                BrierScoreCard(
-                    brierScore = state.brierScore,
-                    totalForecasts = state.totalForecasts,
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ForecastsCard(
+                        totalForecasts = state.totalForecasts,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                    BrierScoreCard(
+                        brierScore = state.brierScore,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                    StreakChip(
+                        currentStreak = state.currentStreak,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
 
+                Text(
+                    text = "Calibration",
+                    style = MaterialTheme.typography.titleMedium,
+                )
                 CalibrationChart(buckets = state.calibrationBuckets)
 
-                StreakCard(currentStreak = state.currentStreak)
-
-                ActivityChart(weeklyActivity = state.weeklyActivity)
+                Text(
+                    text = "Activity",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                ActivityHeatmap(dailyActivity = state.dailyActivity)
             }
         }
     }
 }
 
 @Composable
+private fun ForecastsCard(
+    totalForecasts: Int,
+    modifier: Modifier = Modifier,
+) {
+    StatCard(
+        title = "Forecasts",
+        value = totalForecasts.toString(),
+        modifier = modifier,
+    )
+}
+
+@Composable
 private fun BrierScoreCard(
     brierScore: Double?,
-    totalForecasts: Int,
+    modifier: Modifier = Modifier,
 ) {
     var showTooltip by remember { mutableStateOf(false) }
+    StatCard(
+        title = "Brier",
+        value = brierScore?.let { "%.2f".format(it) } ?: "--",
+        modifier = modifier,
+        trailingIcon = {
+            Box {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                    contentDescription = "What is Brier Score?",
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clickable { showTooltip = true },
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                DropdownMenu(
+                    expanded = showTooltip,
+                    onDismissRequest = { showTooltip = false },
+                ) {
+                    Text(
+                        text = "Lower is better. Perfect = 0.0",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        },
+    )
+}
 
+@Composable
+private fun StatCard(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    leadingIcon: (@Composable () -> Unit)? = null,
+    trailingIcon: (@Composable () -> Unit)? = null,
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
             ) {
+                leadingIcon?.invoke()
                 Text(
-                    text = brierScore?.let { "%.2f".format(it) } ?: "--",
-                    style = MaterialTheme.typography.displaySmall,
+                    text = title,
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(
-                    text = "Brier Score",
-                    style = MaterialTheme.typography.displaySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Box {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.HelpOutline,
-                        contentDescription = "What is Brier Score?",
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clickable { showTooltip = true },
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    DropdownMenu(
-                        expanded = showTooltip,
-                        onDismissRequest = { showTooltip = false },
-                    ) {
-                        Text(
-                            text = "Lower is better. Perfect = 0.0",
-                            modifier = Modifier.padding(16.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
+                trailingIcon?.invoke()
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "Based on $totalForecasts forecasts",
-                style = MaterialTheme.typography.bodySmall,
+                text = value,
+                style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -177,12 +234,27 @@ private fun BrierScoreCard(
 }
 
 @Composable
-private fun CalibrationChart(buckets: List<CalibrationBucket>) {
-    Text(
-        text = "Calibration",
-        style = MaterialTheme.typography.titleMedium,
+private fun StreakChip(
+    currentStreak: Int,
+    modifier: Modifier = Modifier,
+) {
+    StatCard(
+        title = "Streak",
+        value = currentStreak.toString(),
+        modifier = modifier,
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Default.LocalFireDepartment,
+                contentDescription = "Streak",
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        },
     )
+}
 
+@Composable
+private fun CalibrationChart(buckets: List<CalibrationBucket>) {
     var selectedBucketIndex by remember { mutableStateOf<Int?>(null) }
     val dotPositions = remember { mutableListOf<Offset>() }
 
@@ -210,327 +282,338 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
         }
     }
 
-    Canvas(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp)
-            .semantics { contentDescription = calibrationDescription }
-            .pointerInput(buckets) {
-                val threshold = 24.dp.toPx()
-                detectTapGestures { offset ->
-                    val nearest = dotPositions.withIndex().minByOrNull { (_, pos) ->
-                        sqrt(
-                            (pos.x - offset.x) * (pos.x - offset.x) +
-                                (pos.y - offset.y) * (pos.y - offset.y),
-                        )
-                    }
-                    if (nearest != null) {
-                        val dist = sqrt(
-                            (nearest.value.x - offset.x) * (nearest.value.x - offset.x) +
-                                (nearest.value.y - offset.y) * (nearest.value.y - offset.y),
-                        )
-                        selectedBucketIndex = if (dist <= threshold) nearest.index else null
-                    } else {
-                        selectedBucketIndex = null
-                    }
-                }
-            },
+            .padding(end = weekdayLabelWidth + heatmapLabelGap),
+        contentAlignment = Alignment.Center,
     ) {
-        val chartLeft = 36.dp.toPx()
-        val chartBottom = size.height - 24.dp.toPx()
-        val chartTop = 8.dp.toPx()
-        val chartRight = size.width - 8.dp.toPx()
-        val chartWidth = chartRight - chartLeft
-        val chartHeight = chartBottom - chartTop
-
-        // Draw dashed diagonal (perfect calibration line)
-        drawLine(
-            color = outlineColor,
-            start = Offset(chartLeft, chartBottom),
-            end = Offset(chartRight, chartTop),
-            strokeWidth = 2f,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f)),
-        )
-
-        // Draw axes
-        drawLine(
-            color = onSurfaceColor,
-            start = Offset(chartLeft, chartTop),
-            end = Offset(chartLeft, chartBottom),
-            strokeWidth = 1f,
-        )
-        drawLine(
-            color = onSurfaceColor,
-            start = Offset(chartLeft, chartBottom),
-            end = Offset(chartRight, chartBottom),
-            strokeWidth = 1f,
-        )
-
-        // Axis labels
-        val xLabels = listOf("0%", "50%", "100%")
-        xLabels.forEachIndexed { i, label ->
-            val x = chartLeft + chartWidth * (i.toFloat() / (xLabels.size - 1))
-            val textResult = textMeasurer.measure(label, labelStyle)
-            drawText(
-                textLayoutResult = textResult,
-                topLeft = Offset(x - textResult.size.width / 2f, chartBottom + 4.dp.toPx()),
-            )
-        }
-
-        val yLabels = listOf("0%", "50%", "100%")
-        yLabels.forEachIndexed { i, label ->
-            val y = chartBottom - chartHeight * (i.toFloat() / (yLabels.size - 1))
-            val textResult = textMeasurer.measure(label, labelStyle)
-            drawText(
-                textLayoutResult = textResult,
-                topLeft = Offset(chartLeft - textResult.size.width - 4.dp.toPx(), y - textResult.size.height / 2f),
-            )
-        }
-
-        // Draw data points
-        if (buckets.isNotEmpty()) {
-            val points = buckets.map { bucket ->
-                val x = chartLeft + chartWidth * bucket.predictedRate
-                val y = chartBottom - chartHeight * bucket.actualRate
-                Offset(x, y)
-            }
-
-            dotPositions.clear()
-            dotPositions.addAll(points)
-
-            // Draw dots
-            points.forEachIndexed { i, point ->
-                val radius = 4.dp.toPx() + 2.dp.toPx() * (buckets[i].count.coerceAtMost(10) / 10f)
-                drawCircle(
-                    color = primaryColor,
-                    radius = radius,
-                    center = point,
-                )
-            }
-
-            // Draw selected dot highlight + tooltip
-            selectedBucketIndex?.let { idx ->
-                if (idx in buckets.indices) {
-                    val bucket = buckets[idx]
-                    val point = points[idx]
-
-                    drawCircle(
-                        color = onSurfaceColor,
-                        radius = 8.dp.toPx(),
-                        center = point,
-                        style = Stroke(width = 2f),
-                    )
-
-                    val tooltipText = "${bucket.rangeLabel}: ${(bucket.actualRate * 100).toInt()}% actual (n=${bucket.count})"
-                    val textResult = textMeasurer.measure(tooltipText, tooltipStyle)
-                    val tooltipX = (point.x - textResult.size.width / 2f)
-                        .coerceIn(chartLeft, chartRight - textResult.size.width)
-                    val tooltipY = point.y - 12.dp.toPx() - textResult.size.height
-
-                    drawRect(
-                        color = surfaceVariantColor,
-                        topLeft = Offset(tooltipX - 4.dp.toPx(), tooltipY - 2.dp.toPx()),
-                        size = Size(
-                            textResult.size.width + 8.dp.toPx(),
-                            textResult.size.height + 4.dp.toPx(),
-                        ),
-                    )
-                    drawText(
-                        textLayoutResult = textResult,
-                        topLeft = Offset(tooltipX, tooltipY),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StreakCard(currentStreak: Int) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1.25f)
+                .semantics { contentDescription = calibrationDescription }
+                .pointerInput(buckets) {
+                    val threshold = 24.dp.toPx()
+                    detectTapGestures { offset ->
+                        val nearest = dotPositions.withIndex().minByOrNull { (_, pos) ->
+                            sqrt(
+                                (pos.x - offset.x) * (pos.x - offset.x) +
+                                        (pos.y - offset.y) * (pos.y - offset.y),
+                            )
+                        }
+                        if (nearest != null) {
+                            val dist = sqrt(
+                                (nearest.value.x - offset.x) * (nearest.value.x - offset.x) +
+                                        (nearest.value.y - offset.y) * (nearest.value.y - offset.y),
+                            )
+                            selectedBucketIndex = if (dist <= threshold) nearest.index else null
+                        } else {
+                            selectedBucketIndex = null
+                        }
+                    }
+                },
         ) {
-            Icon(
-                imageVector = Icons.Default.LocalFireDepartment,
-                contentDescription = "Streak",
-                modifier = Modifier.size(32.dp),
-                tint = MaterialTheme.colorScheme.primary,
+            val chartLeft = 36.dp.toPx()
+            val chartBottom = size.height - 24.dp.toPx()
+            val chartTop = 8.dp.toPx()
+            val chartRight = size.width - 8.dp.toPx()
+            val chartWidth = chartRight - chartLeft
+            val chartHeight = chartBottom - chartTop
+
+            drawLine(
+                color = outlineColor,
+                start = Offset(chartLeft, chartBottom),
+                end = Offset(chartRight, chartTop),
+                strokeWidth = 2f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f)),
             )
-            Column {
-                Text(
-                    text = currentStreak.toString(),
-                    style = MaterialTheme.typography.displaySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = if (currentStreak == 1) "Day Streak" else "$currentStreak consecutive days",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+            drawLine(
+                color = onSurfaceColor,
+                start = Offset(chartLeft, chartTop),
+                end = Offset(chartLeft, chartBottom),
+                strokeWidth = 1f,
+            )
+            drawLine(
+                color = onSurfaceColor,
+                start = Offset(chartLeft, chartBottom),
+                end = Offset(chartRight, chartBottom),
+                strokeWidth = 1f,
+            )
+
+            val xLabels = listOf("0%", "50%", "100%")
+            xLabels.forEachIndexed { i, label ->
+                val x = chartLeft + chartWidth * (i.toFloat() / (xLabels.size - 1))
+                val textResult = textMeasurer.measure(label, labelStyle)
+                drawText(
+                    textLayoutResult = textResult,
+                    topLeft = Offset(x - textResult.size.width / 2f, chartBottom + 4.dp.toPx()),
                 )
             }
+
+            val yLabels = listOf("0%", "50%", "100%")
+            yLabels.forEachIndexed { i, label ->
+                val y = chartBottom - chartHeight * (i.toFloat() / (yLabels.size - 1))
+                val textResult = textMeasurer.measure(label, labelStyle)
+                drawText(
+                    textLayoutResult = textResult,
+                    topLeft = Offset(chartLeft - textResult.size.width - 4.dp.toPx(), y - textResult.size.height / 2f),
+                )
+            }
+
+            if (buckets.isNotEmpty()) {
+                val points = buckets.map { bucket ->
+                    val x = chartLeft + chartWidth * bucket.predictedRate
+                    val y = chartBottom - chartHeight * bucket.actualRate
+                    Offset(x, y)
+                }
+
+                dotPositions.clear()
+                dotPositions.addAll(points)
+
+                points.forEachIndexed { i, point ->
+                    val radius = 4.dp.toPx() + 2.dp.toPx() * (buckets[i].count.coerceAtMost(10) / 10f)
+                    drawCircle(
+                        color = primaryColor,
+                        radius = radius,
+                        center = point,
+                    )
+                }
+
+                selectedBucketIndex?.let { idx ->
+                    if (idx in buckets.indices) {
+                        val bucket = buckets[idx]
+                        val point = points[idx]
+
+                        drawCircle(
+                            color = onSurfaceColor,
+                            radius = 8.dp.toPx(),
+                            center = point,
+                            style = Stroke(width = 2f),
+                        )
+
+                        val tooltipText =
+                            "${bucket.rangeLabel}: ${(bucket.actualRate * 100).toInt()}% actual (n=${bucket.count})"
+                        val textResult = textMeasurer.measure(tooltipText, tooltipStyle)
+                        val tooltipX = (point.x - textResult.size.width / 2f)
+                            .coerceIn(chartLeft, chartRight - textResult.size.width)
+                        val tooltipY = point.y - 12.dp.toPx() - textResult.size.height
+
+                        drawRect(
+                            color = surfaceVariantColor,
+                            topLeft = Offset(tooltipX - 4.dp.toPx(), tooltipY - 2.dp.toPx()),
+                            size = Size(
+                                textResult.size.width + 8.dp.toPx(),
+                                textResult.size.height + 4.dp.toPx(),
+                            ),
+                        )
+                        drawText(
+                            textLayoutResult = textResult,
+                            topLeft = Offset(tooltipX, tooltipY),
+                        )
+                    }
+                }
+            }
         }
+    }
+}
+
+/**
+ * Maps a day's forecast count to a heatmap cell color.
+ *
+ * TODO(user): implement me — this shapes how the activity heatmap "feels".
+ *
+ * Parameters:
+ *   count    - number of forecasts made on this day (0 or more)
+ *   maxCount - largest count across all visible days (≥ 1 when any day has activity)
+ *   base     - theme primary color (use for populated cells)
+ *   empty    - theme surfaceVariant color (use for count == 0)
+ *
+ * Trade-offs to consider:
+ *   - Fixed thresholds (0 / 1-2 / 3-5 / 6-9 / 10+) give a stable legend across users,
+ *     but a very active user maxes out quickly.
+ *   - Relative-to-max (quartiles of count/maxCount) self-scales, but in a quiet month
+ *     a single forecast will look dark.
+ *   - Log-scaled alpha handles outliers smoothly but has no discrete legend.
+ *
+ * Return `empty` for count == 0, otherwise a tint of `base` (e.g., `base.copy(alpha = ...)`).
+ */
+private fun heatmapCellColor(count: Int, maxCount: Int, base: Color, empty: Color): Color = when {
+    count <= 0 -> empty
+    count <= 2 -> base.copy(alpha = 0.30f)
+    count <= 3 -> base.copy(alpha = 0.50f)
+    count <= 5 -> base.copy(alpha = 0.65f)
+    count <= 9 -> base.copy(alpha = 0.85f)
+    else -> base
+}
+
+@Composable
+private fun ActivityHeatmap(dailyActivity: List<DayActivity>) {
+    if (dailyActivity.isEmpty()) {
+        Text(
+            text = "No activity data yet.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+
+    val weeks: List<List<DayActivity>> = dailyActivity.chunked(7)
+    val maxCount = dailyActivity.maxOf { it.count }.coerceAtLeast(1)
+    val primary = MaterialTheme.colorScheme.primary
+    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+
+    var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
+
+    val cellSize = 24.dp
+    val cellSpacing = 4.dp
+
+    val description = remember(dailyActivity) {
+        val total = dailyActivity.sumOf { it.count }
+        val activeDays = dailyActivity.count { it.count > 0 }
+        "Activity heatmap: $total forecasts across $activeDays active days in the last 11 weeks."
+    }
+
+    Column(
+        modifier = Modifier
+            .padding(end = weekdayLabelWidth + heatmapLabelGap)
+            .semantics { contentDescription = description },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        MonthLabelsRow(weeks = weeks, cellSize = cellSize, cellSpacing = cellSpacing)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(heatmapLabelGap)) {
+            WeekdayLabelsColumn(cellSize = cellSize, cellSpacing = cellSpacing)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(cellSpacing)) {
+                weeks.forEach { week ->
+                    Column(verticalArrangement = Arrangement.spacedBy(cellSpacing)) {
+                        week.forEach { day ->
+                            val color = heatmapCellColor(
+                                count = day.count,
+                                maxCount = maxCount,
+                                base = primary,
+                                empty = surfaceVariant,
+                            )
+                            val isSelected = selectedDate == day.date
+                            val isFuture = day.date.isAfter(LocalDate.now())
+                            Box(
+                                modifier = Modifier
+                                    .size(cellSize)
+                                    .background(
+                                        color = if (isFuture) Color.Transparent else color,
+                                        shape = RoundedCornerShape(4.dp),
+                                    )
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier.background(
+                                                color = color,
+                                                shape = RoundedCornerShape(4.dp),
+                                            )
+                                        } else Modifier,
+                                    )
+                                    .clickable(enabled = !isFuture) {
+                                        selectedDate = if (isSelected) null else day.date
+                                    },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        val selected = selectedDate?.let { d -> dailyActivity.firstOrNull { it.date == d } }
+        Box(modifier = Modifier.fillMaxWidth().height(24.dp)) {
+            if (selected != null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(6.dp),
+                ) {
+                    val formatter = DateTimeFormatter.ofPattern("MMM d")
+                    val label = selected.date.format(formatter)
+                    val countText = if (selected.count == 1) "1 forecast" else "${selected.count} forecasts"
+                    Text(
+                        text = "$label: $countText",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
     }
 }
 
 @Composable
-private fun ActivityChart(weeklyActivity: List<WeekActivity>) {
-    Text(
-        text = "Activity (Last 12 Weeks)",
-        style = MaterialTheme.typography.titleMedium,
-    )
+private fun MonthLabelsRow(
+    weeks: List<List<DayActivity>>,
+    cellSize: androidx.compose.ui.unit.Dp,
+    cellSpacing: androidx.compose.ui.unit.Dp,
+) {
+    val onSurface = MaterialTheme.colorScheme.onSurfaceVariant
+    val monthFormatter = DateTimeFormatter.ofPattern("MMM")
 
-    var selectedBarIndex by remember { mutableStateOf<Int?>(null) }
-
-    val activityDescription = remember(weeklyActivity) {
-        if (weeklyActivity.isEmpty()) "Activity chart with no data"
-        else buildString {
-            append("Weekly activity chart. ")
-            weeklyActivity.forEach { w ->
-                append("${w.weekLabel}: ${w.count} predictions. ")
-            }
+    // Only label a column when its first-day-of-week falls in a *new* month vs. the previous column.
+    val labels: List<String?> = weeks.mapIndexed { i, week ->
+        val firstDay = week.first().date
+        if (i == 0) {
+            firstDay.format(monthFormatter)
+        } else {
+            val prevFirst = weeks[i - 1].first().date
+            if (firstDay.month != prevFirst.month) firstDay.format(monthFormatter) else null
         }
     }
 
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
-    val surfaceVariantColor = MaterialTheme.colorScheme.surfaceVariant
-    val textMeasurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(
-        fontSize = 8.sp,
-        color = onSurfaceColor,
-    )
-    val tooltipStyle = TextStyle(
-        fontSize = 10.sp,
-        color = onSurfaceColor,
-    )
-
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(160.dp)
-            .semantics { contentDescription = activityDescription }
-            .pointerInput(weeklyActivity) {
-                if (weeklyActivity.isEmpty()) return@pointerInput
-                val chartLeftPx = 28.dp.toPx()
-                val chartRightPx = size.width - 8.dp.toPx()
-                val chartWidthPx = chartRightPx - chartLeftPx
-                val slotWidth = chartWidthPx / weeklyActivity.size
-                val gapWidthPx = slotWidth * 0.3f
-
-                detectTapGestures { offset ->
-                    val tappedIndex = weeklyActivity.indices.firstOrNull { i ->
-                        val barLeft = chartLeftPx + slotWidth * i + gapWidthPx / 2f
-                        val barRight = barLeft + slotWidth * 0.7f
-                        offset.x >= barLeft && offset.x <= barRight
-                    }
-                    selectedBarIndex = if (tappedIndex != null && weeklyActivity[tappedIndex].count > 0) {
-                        tappedIndex
-                    } else {
-                        null
+    Row(horizontalArrangement = Arrangement.spacedBy(heatmapLabelGap)) {
+        Spacer(modifier = Modifier.width(weekdayLabelWidth))
+        Row(horizontalArrangement = Arrangement.spacedBy(cellSpacing)) {
+            labels.forEach { label ->
+                Box(modifier = Modifier.width(cellSize)) {
+                    if (label != null) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = onSurface,
+                        )
                     }
                 }
-            },
-    ) {
-        if (weeklyActivity.isEmpty()) return@Canvas
-
-        val chartLeft = 28.dp.toPx()
-        val chartBottom = size.height - 32.dp.toPx()
-        val chartTop = 8.dp.toPx()
-        val chartRight = size.width - 8.dp.toPx()
-        val chartWidth = chartRight - chartLeft
-        val chartHeight = chartBottom - chartTop
-
-        val maxCount = (weeklyActivity.maxOfOrNull { it.count } ?: 1).coerceAtLeast(1)
-        val barWidth = chartWidth / weeklyActivity.size * 0.7f
-        val gapWidth = chartWidth / weeklyActivity.size * 0.3f
-
-        // Draw baseline
-        drawLine(
-            color = onSurfaceColor,
-            start = Offset(chartLeft, chartBottom),
-            end = Offset(chartRight, chartBottom),
-            strokeWidth = 1f,
-        )
-
-        weeklyActivity.forEachIndexed { i, week ->
-            val barLeft = chartLeft + (chartWidth / weeklyActivity.size) * i + gapWidth / 2f
-            val barHeight = (week.count.toFloat() / maxCount) * chartHeight
-            val barTop = chartBottom - barHeight
-
-            if (week.count > 0) {
-                drawRect(
-                    color = primaryColor,
-                    topLeft = Offset(barLeft, barTop),
-                    size = Size(barWidth, barHeight),
-                )
-            }
-
-            // X-axis label (show every 2nd to avoid crowding)
-            if (i % 2 == 0 || weeklyActivity.size <= 6) {
-                val textResult = textMeasurer.measure(week.weekLabel, labelStyle)
-                drawText(
-                    textLayoutResult = textResult,
-                    topLeft = Offset(
-                        barLeft + barWidth / 2 - textResult.size.width / 2f,
-                        chartBottom + 4.dp.toPx(),
-                    ),
-                )
-            }
-        }
-
-        // Y-axis labels
-        val yLabels = listOf("0", maxCount.toString())
-        yLabels.forEachIndexed { i, label ->
-            val y = chartBottom - chartHeight * (i.toFloat() / (yLabels.size - 1))
-            val textResult = textMeasurer.measure(label, labelStyle)
-            drawText(
-                textLayoutResult = textResult,
-                topLeft = Offset(chartLeft - textResult.size.width - 4.dp.toPx(), y - textResult.size.height / 2f),
-            )
-        }
-
-        // Draw selected bar highlight + tooltip
-        selectedBarIndex?.let { idx ->
-            if (idx in weeklyActivity.indices) {
-                val week = weeklyActivity[idx]
-                val barLeft = chartLeft + (chartWidth / weeklyActivity.size) * idx + gapWidth / 2f
-                val barHeight = (week.count.toFloat() / maxCount) * chartHeight
-                val barTop = chartBottom - barHeight
-
-                drawRect(
-                    color = onSurfaceColor,
-                    topLeft = Offset(barLeft, barTop),
-                    size = Size(barWidth, barHeight),
-                    style = Stroke(width = 2f),
-                )
-
-                val tooltipText = "${week.count} predictions – ${week.weekLabel}"
-                val textResult = textMeasurer.measure(tooltipText, tooltipStyle)
-                val tooltipX = (barLeft + barWidth / 2 - textResult.size.width / 2f)
-                    .coerceIn(chartLeft, chartRight - textResult.size.width)
-                val tooltipY = barTop - textResult.size.height - 6.dp.toPx()
-
-                drawRect(
-                    color = surfaceVariantColor,
-                    topLeft = Offset(tooltipX - 4.dp.toPx(), tooltipY - 2.dp.toPx()),
-                    size = Size(
-                        textResult.size.width + 8.dp.toPx(),
-                        textResult.size.height + 4.dp.toPx(),
-                    ),
-                )
-                drawText(
-                    textLayoutResult = textResult,
-                    topLeft = Offset(tooltipX, tooltipY),
-                )
             }
         }
     }
 }
+
+private val weekdayLabelWidth = 28.dp
+private val heatmapLabelGap = 6.dp
+
+@Composable
+private fun WeekdayLabelsColumn(
+    cellSize: androidx.compose.ui.unit.Dp,
+    cellSpacing: androidx.compose.ui.unit.Dp,
+) {
+    val onSurface = MaterialTheme.colorScheme.onSurfaceVariant
+    // GitHub-style sparse labels: Mon / Wed / Fri. Grid rows are Mon..Sun (indices 0..6).
+    val labels = listOf("Mon", "", "Wed", "", "Fri", "", "")
+    Column(verticalArrangement = Arrangement.spacedBy(cellSpacing)) {
+        labels.forEach { label ->
+            Box(
+                modifier = Modifier
+                    .width(weekdayLabelWidth)
+                    .height(cellSize),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (label.isNotEmpty()) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = onSurface,
+                    )
+                }
+            }
+        }
+    }
+}
+

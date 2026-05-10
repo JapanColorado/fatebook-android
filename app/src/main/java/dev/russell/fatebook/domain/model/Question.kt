@@ -32,7 +32,7 @@ data class Question(
         get() = !resolved && !LocalDate.now().isBefore(resolveByDate)
 
     val resolvesLabel: String
-        get() = if (resolved || resolveByDate < LocalDate.now()) "Resolved" else "Resolves"
+        get() = if (resolved) "Resolved" else "Resolves"
 
     val isForecastHidden: Boolean
         get() = forecastHiddenUntil != null && Instant.now().isBefore(forecastHiddenUntil)

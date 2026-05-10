@@ -10,7 +10,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -35,7 +37,10 @@ fun QuestionCard(
     onClick: (Question) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val cardClick = remember(question.id, onClick) { { onClick(question) } }
+    // rememberUpdatedState so the click reads the latest question after edits —
+    // keying on question.id alone leaves a stale closure when fields change.
+    val currentQuestion by rememberUpdatedState(question)
+    val cardClick = remember(onClick) { { onClick(currentQuestion) } }
     Card(
         onClick = cardClick,
         modifier = modifier.fillMaxWidth(),

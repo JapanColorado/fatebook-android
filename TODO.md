@@ -16,6 +16,10 @@
 
 ## Archive
 
+### v0.2.2 -- Detail sheet fixes
+- [x] Detail sheet showed pre-edit values after editing (stale closure: `QuestionCard` cached its click lambda with `remember(question.id)`, so the captured `Question` reference didn't refresh when other fields changed; switched to `rememberUpdatedState`)
+- [x] `resolvesLabel` said "Resolved" for unresolved-but-overdue questions; now only based on the `resolved` flag (the feed card already used that flag — the detail sheet was the outlier)
+
 ### v0.2.1 -- Performance
 - [x] Set-diff refresh inside a single Room transaction (no more empty→full flash on every refresh)
 - [x] Replace post-mutation `refresh()` calls with targeted DAO updates (addForecast, resolveQuestion, editQuestion, setSharedPublicly)

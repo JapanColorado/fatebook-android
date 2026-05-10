@@ -72,12 +72,12 @@ class QuestionTest {
     }
 
     @Test
-    fun `resolvesLabel is Resolved when resolveBy is in the past`() {
+    fun `resolvesLabel is Resolves when overdue but not yet resolved`() {
         val question = TestData.question(
             resolved = false,
-            resolveBy = Instant.parse("2020-01-01T00:00:00Z"), // far past
+            resolveBy = Instant.parse("2020-01-01T00:00:00Z"), // far past, still unresolved
         )
-        assertThat(question.resolvesLabel).isEqualTo("Resolved")
+        assertThat(question.resolvesLabel).isEqualTo("Resolves")
     }
 
     @Test

@@ -5,9 +5,11 @@ import app.cash.paparazzi.Paparazzi
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
 import dev.russell.fatebook.ui.components.ErrorBanner
+import dev.russell.fatebook.ui.components.OfflineBanner
 import dev.russell.fatebook.ui.components.ProbabilitySlider
 import dev.russell.fatebook.ui.components.QuestionCard
 import dev.russell.fatebook.ui.components.ShimmerQuestionCard
+import dev.russell.fatebook.ui.components.SyncIssuesBanner
 import dev.russell.fatebook.ui.theme.FatebookTheme
 import org.junit.Rule
 import org.junit.Test
@@ -248,6 +250,46 @@ class ComponentScreenshotTest {
                     onRetry = {},
                     onDismiss = {},
                 )
+            }
+        }
+    }
+
+    // --- OfflineBanner ---
+
+    @Test
+    fun offlineBanner_light() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                OfflineBanner()
+            }
+        }
+    }
+
+    @Test
+    fun offlineBanner_dark() {
+        paparazzi.snapshot {
+            FatebookTheme(darkTheme = true, dynamicColor = false) {
+                OfflineBanner()
+            }
+        }
+    }
+
+    // --- SyncIssuesBanner ---
+
+    @Test
+    fun syncIssuesBanner_single() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                SyncIssuesBanner(count = 1, onView = {})
+            }
+        }
+    }
+
+    @Test
+    fun syncIssuesBanner_multiple() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                SyncIssuesBanner(count = 3, onView = {})
             }
         }
     }

@@ -16,6 +16,16 @@
 
 ## Archive
 
+### Offline writes
+- [x] Optimistic write architecture: every mutation applies to Room synchronously and is queued in `pending_mutations` for background sync by a `SyncWorker` (NetworkType.CONNECTED constraint)
+- [x] Offline-created questions use `local-<uuid>` ids; reconcile to the server id by parsing the `--<cuid>` suffix of the URL returned by `createQuestion` (with title+createdAt window as fallback)
+- [x] Reconciliation deletes the local-id row instead of renaming the PK (avoids `UNIQUE constraint failed` when the server row is already in cache from `refresh()`)
+- [x] Retry-safe: before re-calling `api.createQuestion` on a previously-errored CREATE, check for an existing server copy and skip the API call
+- [x] `[CREATE_local, DELETE_local]` collapses to a noop at enqueue time
+- [x] `NetworkMonitor` via `registerDefaultNetworkCallback` exposes `isOnline: StateFlow<Boolean>` (dropped `NET_CAPABILITY_VALIDATED` requirement — that flag lags real connectivity and was hiding genuine offline transitions)
+- [x] `OfflineBanner` shows above the feed when offline; `SyncIssuesBanner` + `SyncErrorsSheet` surface mutations that exhausted retries with per-row Discard / Retry-all (Discard of an errored CREATE auto-removes the local duplicate if a server copy exists)
+- [x] Tests: `SyncRunner` happy path, IOException → RETRY, 5 HTTP failures → ERRORED, URL parsing (canonical + slug-with-double-dash + missing suffix), retry-skip, and Paparazzi snapshots for both banners
+
 ### v0.2.2 -- Detail sheet fixes
 - [x] Detail sheet showed pre-edit values after editing (stale closure: `QuestionCard` cached its click lambda with `remember(question.id)`, so the captured `Question` reference didn't refresh when other fields changed; switched to `rememberUpdatedState`)
 - [x] `resolvesLabel` said "Resolved" for unresolved-but-overdue questions; now only based on the `resolved` flag (the feed card already used that flag — the detail sheet was the outlier)

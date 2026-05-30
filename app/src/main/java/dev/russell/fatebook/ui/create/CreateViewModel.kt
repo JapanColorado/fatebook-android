@@ -48,6 +48,8 @@ class CreateViewModel @Inject constructor(
             return
         }
 
+        // createQuestion is optimistic — it inserts a local-id row + queue entry,
+        // then returns. The actual API call happens in SyncWorker.
         viewModelScope.launch {
             _state.value = current.copy(isSubmitting = true, error = null)
             try {

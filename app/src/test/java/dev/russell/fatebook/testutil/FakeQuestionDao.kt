@@ -118,4 +118,34 @@ class FakeQuestionDao : QuestionDao {
             ) else it
         }
     }
+
+    override suspend fun findCreatedNear(
+        title: String,
+        aroundEpochMs: Long,
+        windowMs: Long,
+    ): QuestionEntity? {
+        return _questions.value.asSequence()
+            .filter { !it.id.startsWith("local-") }
+            .filter { it.title == title }
+            .filter { kotlin.math.abs(it.createdAtEpochMs - aroundEpochMs) <= windowMs }
+            .sortedBy { kotlin.math.abs(it.createdAtEpochMs - aroundEpochMs) }
+            .firstOrNull()
+    }
+
+    override suspend fun findByUrl(url: String): QuestionEntity? =
+        _questions.value.firstOrNull { it.url == url }
+
+    override suspend fun findMostRecentNonLocalNear(
+        aroundEpochMs: Long,
+        windowMs: Long,
+    ): QuestionEntity? = _questions.value
+        .filter { !it.id.startsWith("local-") }
+        .filter { kotlin.math.abs(it.createdAtEpochMs - aroundEpochMs) <= windowMs }
+        .maxByOrNull { it.createdAtEpochMs }
+
+    override suspend fun recentNonLocal(limit: Int): List<QuestionEntity> =
+        _questions.value
+            .filter { !it.id.startsWith("local-") }
+            .sortedByDescending { it.createdAtEpochMs }
+            .take(limit)
 }

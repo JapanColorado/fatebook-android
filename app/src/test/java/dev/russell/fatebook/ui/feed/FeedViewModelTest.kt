@@ -1,6 +1,7 @@
 package dev.russell.fatebook.ui.feed
 
 import com.google.common.truth.Truth.assertThat
+import dev.russell.fatebook.data.network.NetworkMonitor
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
@@ -10,6 +11,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -30,6 +32,7 @@ class FeedViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private val repository = mockk<QuestionRepository>(relaxed = true)
+    private val networkMonitor = mockk<NetworkMonitor>(relaxed = true)
 
     @Before
     fun setup() {
@@ -37,8 +40,10 @@ class FeedViewModelTest {
         coEvery { repository.observeActive() } returns flowOf(emptyList())
         coEvery { repository.observeResolved() } returns flowOf(emptyList())
         coEvery { repository.observeReadyToResolve() } returns flowOf(emptyList())
+        coEvery { repository.observeErroredMutations() } returns flowOf(emptyList())
         coEvery { repository.refresh() } returns emptyList()
         every { repository.hasMore() } returns false
+        every { networkMonitor.isOnline } returns MutableStateFlow(true)
     }
 
     @After
@@ -47,7 +52,7 @@ class FeedViewModelTest {
     }
 
     private fun createViewModel(): FeedViewModel {
-        return FeedViewModel(repository)
+        return FeedViewModel(repository, networkMonitor)
     }
 
     @Test

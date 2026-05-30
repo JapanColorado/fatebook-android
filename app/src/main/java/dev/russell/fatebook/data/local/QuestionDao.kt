@@ -51,6 +51,53 @@ interface QuestionDao {
     @Query("SELECT * FROM questions WHERE id = :questionId")
     suspend fun getById(questionId: String): QuestionEntity?
 
+    /**
+     * Find a non-local question matching [title] whose createdAt is within
+     * [windowMs] of [aroundEpochMs]. Used as a fallback to reconcile a
+     * locally-created question with the server-assigned row when URL parsing
+     * fails. Title equality is the strongest signal we have that's resilient
+     * to server-side resolveBy timezone normalisation.
+     */
+    @Query(
+        """
+        SELECT * FROM questions
+        WHERE id NOT LIKE 'local-%'
+          AND title = :title
+          AND ABS(createdAtEpochMs - :aroundEpochMs) <= :windowMs
+        ORDER BY ABS(createdAtEpochMs - :aroundEpochMs) ASC, createdAtEpochMs DESC
+        LIMIT 1
+        """
+    )
+    suspend fun findCreatedNear(
+        title: String,
+        aroundEpochMs: Long,
+        windowMs: Long,
+    ): QuestionEntity?
+
+    /** Exact-URL lookup. Used as a fallback when URL-id parsing fails. */
+    @Query("SELECT * FROM questions WHERE url = :url LIMIT 1")
+    suspend fun findByUrl(url: String): QuestionEntity?
+
+    /**
+     * Most-recent non-local question created within [windowMs] of [aroundEpochMs].
+     * Last-resort fallback for matching a freshly-created server question when
+     * URL parsing AND title matching both fail.
+     */
+    @Query(
+        """
+        SELECT * FROM questions
+        WHERE id NOT LIKE 'local-%'
+          AND ABS(createdAtEpochMs - :aroundEpochMs) <= :windowMs
+        ORDER BY createdAtEpochMs DESC
+        LIMIT 1
+        """
+    )
+    suspend fun findMostRecentNonLocalNear(aroundEpochMs: Long, windowMs: Long): QuestionEntity?
+
+    /** First N non-local questions, most recent first. Used to enrich sync error messages. */
+    @Query("SELECT * FROM questions WHERE id NOT LIKE 'local-%' ORDER BY createdAtEpochMs DESC LIMIT :limit")
+    suspend fun recentNonLocal(limit: Int): List<QuestionEntity>
+
     @Query("SELECT id FROM questions")
     suspend fun getAllIds(): List<String>
 

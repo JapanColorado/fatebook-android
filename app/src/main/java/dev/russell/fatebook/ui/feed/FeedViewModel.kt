@@ -3,6 +3,8 @@ package dev.russell.fatebook.ui.feed
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.russell.fatebook.data.local.PendingMutationEntity
+import dev.russell.fatebook.data.network.NetworkMonitor
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Question
@@ -15,6 +17,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -51,6 +54,12 @@ data class DetailSheetState(
     val isResolving: Boolean = false,
 )
 
+data class SyncErrorEntry(
+    val id: Long,
+    val type: String,
+    val message: String,
+)
+
 data class FeedUiState(
     val questions: List<Question> = emptyList(),
     val filter: FeedFilter = FeedFilter.ACTIVE,
@@ -61,11 +70,15 @@ data class FeedUiState(
     val isInitialLoad: Boolean = true,
     val hasMore: Boolean = false,
     val isLoadingMore: Boolean = false,
+    val isOffline: Boolean = false,
+    val syncErrors: List<SyncErrorEntry> = emptyList(),
+    val showSyncErrorsSheet: Boolean = false,
 )
 
 @HiltViewModel
 class FeedViewModel @Inject constructor(
     private val repository: QuestionRepository,
+    networkMonitor: NetworkMonitor,
 ) : ViewModel() {
 
     private var retryCount = 0
@@ -78,6 +91,12 @@ class FeedViewModel @Inject constructor(
     private val _isInitialLoad = MutableStateFlow(true)
     private val _hasMore = MutableStateFlow(false)
     private val _isLoadingMore = MutableStateFlow(false)
+    private val _showSyncErrorsSheet = MutableStateFlow(false)
+
+    private val isOffline: Flow<Boolean> = networkMonitor.isOnline.map { !it }
+
+    private val syncErrors: Flow<List<SyncErrorEntry>> = repository.observeErroredMutations()
+        .map { rows -> rows.map { it.toUi() } }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val questionsFlow: Flow<List<Question>> = _filter
@@ -97,6 +116,7 @@ class FeedViewModel @Inject constructor(
         listOf(
             questionsFlow, _filter, _isRefreshing, _error, _detail,
             _searchQuery, _isInitialLoad, _hasMore, _isLoadingMore,
+            isOffline, syncErrors, _showSyncErrorsSheet,
         )
     ) { args ->
         @Suppress("UNCHECKED_CAST")
@@ -110,6 +130,9 @@ class FeedViewModel @Inject constructor(
             isInitialLoad = args[6] as Boolean,
             hasMore = args[7] as Boolean,
             isLoadingMore = args[8] as Boolean,
+            isOffline = args[9] as Boolean,
+            syncErrors = args[10] as List<SyncErrorEntry>,
+            showSyncErrorsSheet = args[11] as Boolean,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FeedUiState())
 
@@ -169,7 +192,6 @@ class FeedViewModel @Inject constructor(
             question = question,
             forecastSliderValue = question.yourLatestForecast?.toFloat() ?: 0.5f,
         )
-        // Load comments from local cache (populated during refresh from getQuestions API)
         viewModelScope.launch {
             _detail.update { it.copy(isLoadingComments = true) }
             try {
@@ -198,13 +220,11 @@ class FeedViewModel @Inject constructor(
         val question = _detail.value.question ?: return
         viewModelScope.launch {
             _detail.update { it.copy(isUpdatingForecast = true) }
-            _error.value = null
             try {
                 repository.addForecast(question.id, _detail.value.forecastSliderValue.toDouble())
-                _detail.value = DetailSheetState() // close sheet on success
+                _detail.value = DetailSheetState()
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to update forecast")
-            } finally {
                 _detail.update { it.copy(isUpdatingForecast = false) }
             }
         }
@@ -247,7 +267,6 @@ class FeedViewModel @Inject constructor(
         val state = _detail.value
         viewModelScope.launch {
             _detail.update { it.copy(isSaving = true) }
-            _error.value = null
             try {
                 repository.editQuestion(
                     questionId = question.id,
@@ -255,7 +274,7 @@ class FeedViewModel @Inject constructor(
                     resolveBy = state.editResolveBy,
                     notes = state.editNotes.takeIf { it != (question.notes ?: "") },
                 )
-                _detail.value = DetailSheetState() // close sheet on success
+                _detail.value = DetailSheetState()
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to save changes")
                 _detail.update { it.copy(isSaving = false) }
@@ -277,10 +296,9 @@ class FeedViewModel @Inject constructor(
         val question = _detail.value.question ?: return
         viewModelScope.launch {
             _detail.update { it.copy(isDeleting = true, showDeleteConfirmation = false) }
-            _error.value = null
             try {
                 repository.deleteQuestion(question.id)
-                _detail.value = DetailSheetState() // close sheet
+                _detail.value = DetailSheetState()
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to delete question")
                 _detail.update { it.copy(isDeleting = false) }
@@ -300,7 +318,6 @@ class FeedViewModel @Inject constructor(
         if (text.isEmpty()) return
         viewModelScope.launch {
             _detail.update { it.copy(isAddingComment = true) }
-            _error.value = null
             try {
                 val newComment = repository.addComment(question.id, text)
                 _detail.update {
@@ -321,15 +338,12 @@ class FeedViewModel @Inject constructor(
 
     fun toggleSharedPublicly() {
         val question = _detail.value.question ?: return
+        val newShared = !question.sharedPublicly
         viewModelScope.launch {
-            _error.value = null
             try {
-                val newShared = !question.sharedPublicly
                 repository.setSharedPublicly(question.id, newShared, question.unlisted)
                 _detail.update {
-                    it.copy(
-                        question = question.copy(sharedPublicly = newShared),
-                    )
+                    it.copy(question = question.copy(sharedPublicly = newShared))
                 }
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to update sharing")
@@ -343,13 +357,11 @@ class FeedViewModel @Inject constructor(
         val question = _detail.value.question ?: return
         viewModelScope.launch {
             _detail.update { it.copy(isResolving = true) }
-            _error.value = null
             try {
                 repository.resolveQuestion(question.id, resolution)
-                _detail.value = DetailSheetState() // close sheet on success
+                _detail.value = DetailSheetState()
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to resolve question")
-            } finally {
                 _detail.update { it.copy(isResolving = false) }
             }
         }
@@ -357,6 +369,29 @@ class FeedViewModel @Inject constructor(
 
     fun dismissError() {
         _error.value = null
+    }
+
+    // --- Sync errors ---
+
+    fun showSyncErrorsSheet() {
+        _showSyncErrorsSheet.value = true
+    }
+
+    fun dismissSyncErrorsSheet() {
+        _showSyncErrorsSheet.value = false
+    }
+
+    fun retryAllSyncErrors() {
+        viewModelScope.launch {
+            repository.retryAllErroredMutations()
+            _showSyncErrorsSheet.value = false
+        }
+    }
+
+    fun discardSyncError(id: Long) {
+        viewModelScope.launch {
+            repository.discardErroredMutation(id)
+        }
     }
 
     private fun classifyError(e: Exception, fallback: String): FeedError {
@@ -370,4 +405,19 @@ class FeedViewModel @Inject constructor(
             else -> FeedError.Other(e.message ?: fallback)
         }
     }
+
+    private fun PendingMutationEntity.toUi(): SyncErrorEntry = SyncErrorEntry(
+        id = id,
+        type = when (type) {
+            PendingMutationEntity.TYPE_CREATE_QUESTION -> "Create question"
+            PendingMutationEntity.TYPE_ADD_FORECAST -> "Update forecast"
+            PendingMutationEntity.TYPE_RESOLVE -> "Resolve"
+            PendingMutationEntity.TYPE_EDIT -> "Edit"
+            PendingMutationEntity.TYPE_DELETE -> "Delete"
+            PendingMutationEntity.TYPE_SET_SHARED -> "Visibility change"
+            PendingMutationEntity.TYPE_ADD_COMMENT -> "Add comment"
+            else -> type
+        },
+        message = lastError ?: "Sync failed",
+    )
 }

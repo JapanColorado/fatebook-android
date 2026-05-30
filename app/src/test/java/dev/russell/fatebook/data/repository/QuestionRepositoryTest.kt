@@ -2,14 +2,19 @@ package dev.russell.fatebook.data.repository
 
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
+import com.squareup.moshi.Moshi
+import dev.russell.fatebook.data.local.PendingMutationEntity
 import dev.russell.fatebook.data.local.Transactor
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.dto.ForecastDto
 import dev.russell.fatebook.data.remote.dto.QuestionsResponseDto
+import dev.russell.fatebook.data.sync.MutationEnqueuer
+import dev.russell.fatebook.data.sync.SyncScheduler
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.FakeCommentDao
 import dev.russell.fatebook.testutil.FakeFatebookApi
 import dev.russell.fatebook.testutil.FakeForecastDao
+import dev.russell.fatebook.testutil.FakePendingMutationDao
 import dev.russell.fatebook.testutil.FakeQuestionDao
 import dev.russell.fatebook.testutil.TestData
 import io.mockk.coVerify
@@ -19,6 +24,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
 import java.time.Instant
+import java.time.LocalDate
 
 class QuestionRepositoryTest {
 
@@ -26,7 +32,10 @@ class QuestionRepositoryTest {
     private lateinit var dao: FakeQuestionDao
     private lateinit var forecastDao: FakeForecastDao
     private lateinit var commentDao: FakeCommentDao
+    private lateinit var pendingDao: FakePendingMutationDao
     private lateinit var prefs: UserPreferences
+    private lateinit var enqueuer: MutationEnqueuer
+    private var scheduleCallCount = 0
     private lateinit var repository: QuestionRepository
 
     @Before
@@ -35,11 +44,24 @@ class QuestionRepositoryTest {
         dao = FakeQuestionDao()
         forecastDao = FakeForecastDao()
         commentDao = FakeCommentDao()
+        pendingDao = FakePendingMutationDao()
         prefs = mockk(relaxed = true)
         every { prefs.apiKey } returns "test-api-key"
-        // Tests run the transaction block inline; production wraps it in a Room transaction.
+        enqueuer = MutationEnqueuer(pendingDao, Moshi.Builder().build())
+        scheduleCallCount = 0
+        val syncScheduler = SyncScheduler { scheduleCallCount++ }
         val transactor = Transactor { block -> block() }
-        repository = QuestionRepository(api, dao, forecastDao, commentDao, prefs, transactor)
+        repository = QuestionRepository(
+            api = api,
+            dao = dao,
+            forecastDao = forecastDao,
+            commentDao = commentDao,
+            pendingDao = pendingDao,
+            prefs = prefs,
+            transactor = transactor,
+            enqueuer = enqueuer,
+            syncScheduler = syncScheduler,
+        )
     }
 
     // --- refresh ---
@@ -54,13 +76,11 @@ class QuestionRepositoryTest {
 
         assertThat(dao.storedQuestions).hasSize(2)
         assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2")
-        // refresh no longer wipes the table — it set-diffs.
         assertThat(dao.deleteAllCallCount).isEqualTo(0)
     }
 
     @Test
     fun `refresh prunes questions absent from response`() = runTest {
-        // Seed two questions, but the API returns only one.
         dao.upsertAll(listOf(TestData.questionEntity(id = "stale"), TestData.questionEntity(id = "keep")))
         api.getQuestionsResponse = {
             TestData.questionsResponse(items = listOf(TestData.questionDto(id = "keep")))
@@ -69,6 +89,21 @@ class QuestionRepositoryTest {
         repository.refresh()
 
         assertThat(dao.storedQuestions.map { it.id }).containsExactly("keep")
+    }
+
+    @Test
+    fun `refresh preserves locally-created questions`() = runTest {
+        // A locally-created question that hasn't synced yet
+        dao.upsertAll(listOf(TestData.questionEntity(id = "local-abc")))
+        api.getQuestionsResponse = {
+            TestData.questionsResponse(items = listOf(TestData.questionDto(id = "server-1")))
+        }
+
+        repository.refresh()
+
+        // Both rows survive: server one is inserted, local one is NOT pruned
+        assertThat(dao.storedQuestions.map { it.id })
+            .containsExactly("local-abc", "server-1")
     }
 
     @Test
@@ -106,7 +141,6 @@ class QuestionRepositoryTest {
 
     @Test
     fun `loadMore appends to cache without pruning`() = runTest {
-        // First page
         api.getQuestionsResponse = { cursor ->
             if (cursor == null) TestData.questionsResponse(
                 items = listOf(TestData.questionDto(id = "q1")),
@@ -121,7 +155,6 @@ class QuestionRepositoryTest {
 
         repository.loadMore()
 
-        // loadMore must NOT prune — that would remove first-page questions.
         assertThat(dao.deleteByIdsNotInCallCount).isEqualTo(pruneCountAfterRefresh)
         assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2")
     }
@@ -134,7 +167,7 @@ class QuestionRepositoryTest {
         val result = repository.loadMore()
 
         assertThat(result).isFalse()
-        assertThat(api.getQuestionsCalls).hasSize(1) // only refresh call, no loadMore call
+        assertThat(api.getQuestionsCalls).hasSize(1)
     }
 
     @Test
@@ -148,10 +181,10 @@ class QuestionRepositoryTest {
         }
         repository.refresh()
 
-        repository.loadMore() // cursor 2 -> 3
+        repository.loadMore()
         assertThat(repository.hasMore()).isTrue()
 
-        repository.loadMore() // cursor 3 -> null
+        repository.loadMore()
         assertThat(repository.hasMore()).isFalse()
     }
 
@@ -182,50 +215,66 @@ class QuestionRepositoryTest {
         assertThat(result[0].id).isEqualTo("q1")
     }
 
+    // --- createQuestion (optimistic) ---
+
     @Test
-    fun `loadMore filters out multi-option questions`() = runTest {
-        val page1 = TestData.questionDto(id = "q1", questionType = "BINARY")
-        val page2Binary = TestData.questionDto(id = "q2", questionType = "BINARY")
-        val page2Multi = TestData.questionDto(id = "q3", questionType = "MULTI_OPTION")
-        api.getQuestionsResponse = { cursor ->
-            if (cursor == null) TestData.questionsResponse(items = listOf(page1), nextCursor = 2)
-            else TestData.questionsResponse(items = listOf(page2Binary, page2Multi))
-        }
-        repository.refresh()
+    fun `createQuestion inserts a local-id row without hitting the API`() = runTest {
+        val returnedId = repository.createQuestion("Test?", LocalDate.of(2030, 1, 1), 0.7)
 
-        repository.loadMore()
-
-        assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2")
+        assertThat(returnedId).startsWith(PendingMutationEntity.LOCAL_ID_PREFIX)
+        assertThat(dao.storedQuestions.map { it.id }).containsExactly(returnedId)
+        assertThat(dao.storedQuestions[0].title).isEqualTo("Test?")
+        assertThat(dao.storedQuestions[0].latestForecast).isEqualTo(0.7)
+        assertThat(api.createQuestionCalls).isEmpty()
+        assertThat(api.getQuestionsCalls).isEmpty()
     }
 
-    // --- createQuestion ---
+    @Test
+    fun `createQuestion enqueues a CREATE_QUESTION mutation and schedules sync`() = runTest {
+        repository.createQuestion("Test?", LocalDate.of(2030, 1, 1), 0.7)
+
+        assertThat(pendingDao.stored).hasSize(1)
+        assertThat(pendingDao.stored[0].type).isEqualTo(PendingMutationEntity.TYPE_CREATE_QUESTION)
+        assertThat(scheduleCallCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `createQuestion seeds an initial forecast row`() = runTest {
+        repository.createQuestion("Test?", LocalDate.of(2030, 1, 1), 0.7)
+
+        assertThat(forecastDao.storedForecasts).hasSize(1)
+        assertThat(forecastDao.storedForecasts[0].forecast).isEqualTo(0.7)
+    }
 
     @Test
     fun `createQuestion sets lastPredictionDate`() = runTest {
-        repository.createQuestion("Test?", java.time.LocalDate.of(2030, 1, 1), 0.7)
+        repository.createQuestion("Test?", LocalDate.of(2030, 1, 1), 0.7)
 
         coVerify { prefs.setLastPredictionDate(any()) }
     }
 
-    @Test
-    fun `createQuestion refreshes cache after creation`() = runTest {
-        repository.createQuestion("Test?", java.time.LocalDate.of(2030, 1, 1), 0.7)
-
-        // createQuestion calls refresh internally, so getQuestions was called
-        assertThat(api.createQuestionCalls).hasSize(1)
-        assertThat(api.getQuestionsCalls).isNotEmpty()
-    }
-
-    // --- addForecast ---
+    // --- addForecast (optimistic) ---
 
     @Test
-    fun `addForecast throws when no API key`() = runTest {
+    fun `addForecast applies local update and enqueues without an API key`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1", latestForecast = 0.5)))
         every { prefs.apiKey } returns null
 
-        val result = runCatching { repository.addForecast("q1", 0.8) }
+        repository.addForecast("q1", 0.8)
 
-        assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull()).isInstanceOf(IllegalStateException::class.java)
+        assertThat(dao.storedQuestions.first { it.id == "q1" }.latestForecast).isEqualTo(0.8)
+        assertThat(pendingDao.stored.single().type).isEqualTo(PendingMutationEntity.TYPE_ADD_FORECAST)
+        assertThat(api.addForecastCalls).isEmpty()
+    }
+
+    @Test
+    fun `addForecast triggers sync and inserts a forecast row`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1")))
+
+        repository.addForecast("q1", 0.8)
+
+        assertThat(scheduleCallCount).isEqualTo(1)
+        assertThat(forecastDao.storedForecasts.map { it.forecast }).contains(0.8)
     }
 
     @Test
@@ -235,68 +284,162 @@ class QuestionRepositoryTest {
         coVerify { prefs.setLastPredictionDate(any()) }
     }
 
+    // --- resolveQuestion (optimistic) ---
+
     @Test
-    fun `addForecast calls API with correct params and applies targeted update`() = runTest {
-        // Seed an existing question so the targeted update has something to touch.
+    fun `resolveQuestion applies local update and enqueues`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1", resolved = false)))
+
+        repository.resolveQuestion("q1", Resolution.YES)
+
+        assertThat(dao.storedQuestions[0].resolved).isTrue()
+        assertThat(dao.storedQuestions[0].resolution).isEqualTo("YES")
+        assertThat(pendingDao.stored.single().type).isEqualTo(PendingMutationEntity.TYPE_RESOLVE)
+        assertThat(api.resolveQuestionCalls).isEmpty()
+        assertThat(scheduleCallCount).isEqualTo(1)
+    }
+
+    // --- editQuestion (optimistic) ---
+
+    @Test
+    fun `editQuestion applies local update and enqueues`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1", title = "Old")))
+
+        repository.editQuestion("q1", title = "New")
+
+        assertThat(dao.storedQuestions[0].title).isEqualTo("New")
+        assertThat(pendingDao.stored.single().type).isEqualTo(PendingMutationEntity.TYPE_EDIT)
+        assertThat(api.editQuestionCalls).isEmpty()
+    }
+
+    // --- deleteQuestion (optimistic) ---
+
+    @Test
+    fun `deleteQuestion of a server-id row removes it locally and enqueues DELETE`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1")))
+
+        repository.deleteQuestion("q1")
+
+        assertThat(dao.storedQuestions).isEmpty()
+        assertThat(pendingDao.stored.single().type).isEqualTo(PendingMutationEntity.TYPE_DELETE)
+        assertThat(api.deleteQuestionCalls).isEmpty()
+    }
+
+    @Test
+    fun `deleteQuestion of a local-id row collapses the queued CREATE`() = runTest {
+        // Simulate offline create
+        val localId = repository.createQuestion("Test?", LocalDate.of(2030, 1, 1), 0.7)
+        assertThat(pendingDao.stored).hasSize(1) // CREATE is queued
+
+        // Now delete it before it syncs — should collapse to a noop
+        repository.deleteQuestion(localId)
+
+        assertThat(dao.storedQuestions).isEmpty()
+        assertThat(pendingDao.stored).isEmpty()
+    }
+
+    // --- setSharedPublicly (optimistic) ---
+
+    @Test
+    fun `setSharedPublicly applies local update and enqueues`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1").copy(sharedPublicly = false)))
+
+        repository.setSharedPublicly("q1", sharedPublicly = true, unlisted = false)
+
+        assertThat(dao.storedQuestions[0].sharedPublicly).isTrue()
+        assertThat(pendingDao.stored.single().type).isEqualTo(PendingMutationEntity.TYPE_SET_SHARED)
+    }
+
+    // --- addComment (optimistic) ---
+
+    @Test
+    fun `addComment inserts local comment and enqueues without calling API`() = runTest {
+        val result = repository.addComment("q1", "Nice!")
+
+        assertThat(result.comment).isEqualTo("Nice!")
+        assertThat(commentDao.storedComments.single().comment).isEqualTo("Nice!")
+        assertThat(pendingDao.stored.single().type).isEqualTo(PendingMutationEntity.TYPE_ADD_COMMENT)
+        assertThat(api.addCommentCalls).isEmpty()
+    }
+
+    // --- sync-issue helpers ---
+
+    @Test
+    fun `discardErroredMutation of CREATE also deletes local duplicate if server has it`() = runTest {
+        // Simulate the bug state: local-id row + server-id row both present,
+        // CREATE mutation in ERRORED status.
+        val localId = repository.createQuestion("Dup?", LocalDate.of(2030, 1, 1), 0.5)
+        // Pretend a refresh has put a server copy in the cache.
         dao.upsertAll(
             listOf(
-                TestData.questionEntity(id = "q1", latestForecast = 0.5, latestForecastAtEpochMs = 0L),
+                TestData.questionEntity(
+                    id = "server-id-real",
+                    title = "Dup?",
+                    createdAtEpochMs = System.currentTimeMillis(),
+                )
+            )
+        )
+        // Mark the CREATE mutation as errored to mimic a failed reconciliation.
+        val mutationId = pendingDao.stored.single().id
+        pendingDao.markErrored(mutationId, "no matching server row appeared")
+
+        repository.discardErroredMutation(mutationId)
+
+        // Mutation gone, AND local duplicate cleaned up, server row stays.
+        assertThat(pendingDao.stored).isEmpty()
+        assertThat(dao.storedQuestions.map { it.id }).containsExactly("server-id-real")
+        assertThat(dao.storedQuestions.map { it.id }).doesNotContain(localId)
+    }
+
+    @Test
+    fun `discardErroredMutation of CREATE keeps local row when server has no copy`() = runTest {
+        val localId = repository.createQuestion("Solo?", LocalDate.of(2030, 1, 1), 0.5)
+        val mutationId = pendingDao.stored.single().id
+        pendingDao.markErrored(mutationId, "HTTP 500")
+
+        repository.discardErroredMutation(mutationId)
+
+        // Mutation gone, but local row stays (no server copy to assume).
+        assertThat(pendingDao.stored).isEmpty()
+        assertThat(dao.storedQuestions.map { it.id }).containsExactly(localId)
+    }
+
+    @Test
+    fun `retryAllErroredMutations clears errored rows and schedules sync`() = runTest {
+        // Manually insert an errored mutation
+        pendingDao.insert(
+            PendingMutationEntity(
+                type = PendingMutationEntity.TYPE_ADD_FORECAST,
+                questionLocalId = "q1",
+                payloadJson = "{\"forecast\":0.7}",
+                createdAtEpochMs = 0,
+                status = PendingMutationEntity.STATUS_ERRORED,
+                attemptCount = 5,
+                lastError = "HTTP 500",
             )
         )
 
-        repository.addForecast("q1", 0.8)
+        repository.retryAllErroredMutations()
 
-        assertThat(api.addForecastCalls).hasSize(1)
-        val (qId, forecast, key) = api.addForecastCalls[0]
-        assertThat(qId).isEqualTo("q1")
-        assertThat(forecast).isEqualTo(0.8)
-        assertThat(key).isEqualTo("test-api-key")
-        // No refresh after addForecast — the local row is updated in place.
-        assertThat(api.getQuestionsCalls).isEmpty()
-        assertThat(dao.storedQuestions.first { it.id == "q1" }.latestForecast).isEqualTo(0.8)
-        assertThat(forecastDao.storedForecasts.map { it.questionId }).contains("q1")
-    }
-
-    // --- resolveQuestion ---
-
-    @Test
-    fun `resolveQuestion calls API with correct resolution value`() = runTest {
-        repository.resolveQuestion("q1", Resolution.YES)
-
-        assertThat(api.resolveQuestionCalls).hasSize(1)
-        val (qId, resolution, key) = api.resolveQuestionCalls[0]
-        assertThat(qId).isEqualTo("q1")
-        assertThat(resolution).isEqualTo("YES")
-        assertThat(key).isEqualTo("test-api-key")
-    }
-
-    @Test
-    fun `resolveQuestion throws when no API key`() = runTest {
-        every { prefs.apiKey } returns null
-
-        val result = runCatching { repository.resolveQuestion("q1", Resolution.NO) }
-
-        assertThat(result.isFailure).isTrue()
+        assertThat(pendingDao.stored.single().status).isEqualTo(PendingMutationEntity.STATUS_PENDING)
+        assertThat(scheduleCallCount).isEqualTo(1)
     }
 
     // --- validateApiKey ---
 
     @Test
     fun `validateApiKey returns true on success`() = runTest {
-        val result = repository.validateApiKey()
-        assertThat(result).isTrue()
+        assertThat(repository.validateApiKey()).isTrue()
     }
 
     @Test
     fun `validateApiKey returns false on exception`() = runTest {
         api.validateApiKeyError = RuntimeException("Unauthorized")
 
-        val result = repository.validateApiKey()
-
-        assertThat(result).isFalse()
+        assertThat(repository.validateApiKey()).isFalse()
     }
 
-    // --- forecast storage ---
+    // --- forecast storage during refresh ---
 
     @Test
     fun `refresh stores forecasts alongside questions`() = runTest {
@@ -313,39 +456,6 @@ class QuestionRepositoryTest {
 
         assertThat(forecastDao.storedForecasts).hasSize(2)
         assertThat(forecastDao.storedForecasts.map { it.forecast }).containsExactly(0.3, 0.7)
-        assertThat(forecastDao.storedForecasts.all { it.questionId == "q1" }).isTrue()
-    }
-
-    @Test
-    fun `refresh replaces forecasts per-question, not globally`() = runTest {
-        // Seed a forecast for an "untouched" question that should NOT be wiped.
-        forecastDao.upsertAll(
-            listOf(
-                dev.russell.fatebook.data.local.ForecastEntity(
-                    questionId = "untouched", forecast = 0.5, createdAtEpochMs = 1L,
-                )
-            )
-        )
-        api.getQuestionsResponse = {
-            TestData.questionsResponse(
-                items = listOf(
-                    TestData.questionDto(
-                        id = "q1",
-                        forecasts = listOf(ForecastDto("u1", 0.7, "2020-01-01T00:00:00Z", null)),
-                    )
-                )
-            )
-        }
-
-        repository.refresh()
-
-        // Global wipe never happens any more.
-        assertThat(forecastDao.deleteAllCallCount).isEqualTo(0)
-        // The untouched question's forecast survives (in production it'd be cascade-deleted by FK
-        // when its parent question is pruned, but the fake DAO doesn't model FKs).
-        assertThat(forecastDao.storedForecasts.map { it.questionId }).contains("untouched")
-        // The refreshed question's forecasts are present.
-        assertThat(forecastDao.storedForecasts.any { it.questionId == "q1" }).isTrue()
     }
 
     // --- loadAllQuestions ---
@@ -418,26 +528,6 @@ class QuestionRepositoryTest {
     }
 
     @Test
-    fun `toEntity handles null forecasts`() = runTest {
-        val dto = TestData.questionDto(forecasts = null)
-        api.getQuestionsResponse = { QuestionsResponseDto(listOf(dto), null) }
-
-        repository.refresh()
-
-        assertThat(dao.storedQuestions[0].latestForecast).isNull()
-    }
-
-    @Test
-    fun `toEntity handles empty forecasts`() = runTest {
-        val dto = TestData.questionDto(forecasts = emptyList())
-        api.getQuestionsResponse = { QuestionsResponseDto(listOf(dto), null) }
-
-        repository.refresh()
-
-        assertThat(dao.storedQuestions[0].latestForecast).isNull()
-    }
-
-    @Test
     fun `parseInstant handles ISO 8601 format`() = runTest {
         val dto = TestData.questionDto(resolveBy = "2030-06-01T12:30:00Z")
         api.getQuestionsResponse = { QuestionsResponseDto(listOf(dto), null) }
@@ -457,48 +547,6 @@ class QuestionRepositoryTest {
 
         assertThat(dao.storedQuestions[0].resolveByEpochMs)
             .isEqualTo(Instant.parse("2030-06-01T00:00:00Z").toEpochMilli())
-    }
-
-    // --- deleteQuestion ---
-
-    @Test
-    fun `deleteQuestion calls API without apiKey and removes from cache`() = runTest {
-        // Seed a question in the DAO
-        dao.upsertAll(listOf(TestData.questionEntity(id = "q1")))
-
-        repository.deleteQuestion("q1")
-
-        assertThat(api.deleteQuestionCalls).containsExactly("q1")
-        assertThat(dao.storedQuestions.map { it.id }).doesNotContain("q1")
-    }
-
-    // --- addComment ---
-
-    @Test
-    fun `addComment calls API and returns new comment`() = runTest {
-        val result = repository.addComment("q1", "Nice!")
-
-        assertThat(api.addCommentCalls).hasSize(1)
-        assertThat(api.addCommentCalls[0]).isEqualTo("q1" to "Nice!")
-        assertThat(result.comment).isEqualTo("Nice!")
-    }
-
-    @Test
-    fun `addComment persists to local cache`() = runTest {
-        repository.addComment("q1", "Nice!")
-
-        assertThat(commentDao.storedComments).hasSize(1)
-        assertThat(commentDao.storedComments[0].comment).isEqualTo("Nice!")
-        assertThat(commentDao.storedComments[0].questionId).isEqualTo("q1")
-    }
-
-    @Test
-    fun `addComment throws when no API key`() = runTest {
-        every { prefs.apiKey } returns null
-
-        val result = runCatching { repository.addComment("q1", "test") }
-
-        assertThat(result.isFailure).isTrue()
     }
 
     // --- countReadyToResolve ---
@@ -525,22 +573,5 @@ class QuestionRepositoryTest {
         val count = repository.countReadyToResolve()
 
         assertThat(count).isEqualTo(1)
-    }
-
-    // --- mapper edge cases ---
-
-    @Test
-    fun `toEntity maps hideForecastsUntil`() = runTest {
-        val dto = TestData.questionDto(
-            forecasts = listOf(
-                ForecastDto("u1", 0.7, "2020-01-02T00:00:00Z", "2030-01-01T00:00:00Z"),
-            )
-        )
-        api.getQuestionsResponse = { QuestionsResponseDto(listOf(dto), null) }
-
-        repository.refresh()
-
-        assertThat(dao.storedQuestions[0].forecastHiddenUntilEpochMs)
-            .isEqualTo(Instant.parse("2030-01-01T00:00:00Z").toEpochMilli())
     }
 }

@@ -34,8 +34,11 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 ```
 
 - **Single source of truth**: `QuestionRepository` orchestrates API ↔ Room cache
-- **Set-diff refresh**: `QuestionRepository.refresh()` upserts response items and deletes questions not in the response, all inside one Room transaction (`Transactor` abstraction wraps `RoomDatabase.withTransaction`). FK CASCADE on `ForecastEntity`/`CommentEntity` cleans up children. Subscribers see exactly one Flow re-emission per refresh — never an empty-then-full flash.
-- **No refresh-after-mutation**: `addForecast`, `resolveQuestion`, `editQuestion`, and `setSharedPublicly` apply targeted DAO updates locally instead of round-tripping through the API for a fresh page. UI updates immediately; the network call only runs to inform the server.
+- **Set-diff refresh**: `QuestionRepository.refresh()` upserts response items and deletes questions not in the response, all inside one Room transaction (`Transactor` abstraction wraps `RoomDatabase.withTransaction`). FK CASCADE on `ForecastEntity`/`CommentEntity` cleans up children. Locally-created questions (id prefixed `local-`) are kept across refresh. Subscribers see exactly one Flow re-emission per refresh — never an empty-then-full flash.
+- **Optimistic offline writes**: All seven mutations (`createQuestion`, `addForecast`, `resolveQuestion`, `editQuestion`, `deleteQuestion`, `setSharedPublicly`, `addComment`) apply to Room immediately AND insert a `PendingMutationEntity` row in the same transaction. The caller's coroutine never awaits the network. A `SyncWorker` (WorkManager, `NetworkType.CONNECTED` constraint) drains the queue when connectivity is available, with WorkManager-default exponential backoff on `IOException` and `Result.retry()`. After 5 HTTP-failure attempts on the same row, it's marked `ERRORED` and surfaced via the **Sync issues** banner.
+- **Offline-created questions** use a temp id (`local-<uuid>`). When the queued `CREATE_QUESTION` syncs, `SyncRunner` refreshes the feed and matches the new server row by title + resolveBy + ±5min `createdAt` window. The temp PK is then rewritten via `questionDao.changeId()`; child `ForecastEntity`/`CommentEntity` rows follow automatically because their FKs declare `onUpdate = CASCADE`. Pending follow-up mutations on the temp id are rewritten via `pendingDao.rewriteQuestionId()` and an in-memory `tempId → realId` map handles the rest of the queue run.
+- **Mutation collapsing**: deleting a `local-*` question whose `CREATE_QUESTION` hasn't synced yet drops both the local row and every queued mutation for it — the server never hears about it. No other collapsing; last-write-wins server-side handles repeated edits/toggles.
+- **No refresh-after-mutation**: mutation handlers do targeted DAO updates locally; the only refresh during sync is the one inside `SyncRunner.syncCreate()` (needed to discover the server id).
 - **API key**: Stored in `EncryptedSharedPreferences` (hardware-backed on Pixel)
 - **Notification prefs**: Stored in Jetpack DataStore
 - **DI**: Hilt (modules in `di/`)
@@ -67,20 +70,25 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 - `FakeQuestionDao` — in-memory DAO using `MutableStateFlow`
 - `FakeForecastDao` — in-memory forecast DAO
 - `FakeCommentDao` — in-memory comment DAO
+- `FakePendingMutationDao` — in-memory pending-mutation queue
 - `UserPreferences` is mocked with MockK (concrete class with Android deps)
 - `Transactor` is the abstraction that wraps `RoomDatabase.withTransaction` in production; in tests, pass `Transactor { block -> block() }` to run the block inline.
+- `SyncScheduler` is a `fun interface` over `SyncWorker.enqueue(context)` so tests can substitute a no-op or counting fake without standing up WorkManager.
+- `SyncRunner` is the pure-Kotlin core of `SyncWorker`. Tests exercise it directly (`SyncRunnerTest`) — the worker class itself is a thin wrapper.
 
 ## Package Structure
 
 ```
 dev.russell.fatebook/
 ├── data/remote/         # Retrofit API interface, interceptor, DTOs
-├── data/local/          # Room database, DAOs (QuestionDao, ForecastDao, CommentDao), entities
+├── data/local/          # Room database, DAOs (QuestionDao, ForecastDao, CommentDao, PendingMutationDao), entities
 ├── data/preferences/    # EncryptedSharedPrefs + DataStore
-├── data/repository/     # QuestionRepository (offline-first)
+├── data/repository/     # QuestionRepository (offline-first, optimistic writes)
+├── data/sync/           # SyncWorker, SyncRunner, MutationEnqueuer, payloads, SyncScheduler
+├── data/network/        # NetworkMonitor (ConnectivityManager → StateFlow<Boolean>)
 ├── domain/model/        # Question, Forecast, Comment, Resolution
 ├── ui/theme/            # Material3 theme, colors, typography
-├── ui/components/       # QuestionCard, ProbabilitySlider, DatePickerField, ShimmerQuestionCard, ErrorBanner
+├── ui/components/       # QuestionCard, ProbabilitySlider, DatePickerField, ShimmerQuestionCard, ErrorBanner, OfflineBanner, SyncIssuesBanner, SyncErrorsSheet
 ├── ui/feed/             # FeedScreen + FeedScreenContent + FeedViewModel
 ├── ui/create/           # CreateScreen + CreateScreenContent + CreateViewModel
 ├── ui/analytics/        # AnalyticsScreen + AnalyticsScreenContent + AnalyticsViewModel
@@ -105,7 +113,7 @@ dev.russell.fatebook/
 - **Error handling**: `FeedError` sealed interface classifies errors: `Network` (IOException), `Auth` (HTTP 401/403 — shows "Settings" button instead of "Retry"), `RateLimited` (HTTP 429), and `Other`. `ErrorBanner` supports custom action labels via `actionLabel`/`onAction` params. Retry uses exponential backoff (1s-16s cap). HTTP logging is conditional — `Level.BODY` in debug, `Level.NONE` in release (requires `buildConfig = true` in `build.gradle.kts`).
 - **Analytics screen**: Accessible via chart icon in feed TopAppBar. Top row of three equal-weight stat cards: Forecasts (count), Brier (with help popup), Streak (with fire icon). Below: calibration chart (selectable dots, 5% buckets, ~1.25:1 aspect to fit tall phones) and an 11-week × 7-day activity heatmap (24dp cells, clickable, shows per-day count in a card below). Uses ALL forecasts per question (stored in `ForecastEntity` table), not just the latest — matching the Fatebook website. `AnalyticsViewModel` observes the existing Room cache; it does NOT eagerly paginate on init (that previously wiped the cache and stalled the UI). If users want full-history analytics, they currently need to scroll the feed to populate more pages — explicit refresh-all is a planned follow-up. The heatmap window aligns to whole Mon–Sun weeks, anchored to the current week's Sunday.
 - **Multi-option filtering**: Only BINARY questions shown; MULTIPLE_CHOICE and QUANTITY types are filtered out in the repository.
-- **Offline-first**: Room cache shows questions immediately, background API refresh
+- **Offline-first reads + writes**: Room cache shows questions immediately on launch; every mutation (create, forecast, resolve, edit, delete, visibility, comment) applies to Room synchronously and is queued in `pending_mutations` for background sync. `OfflineBanner` ("You're offline. Changes will sync when you reconnect.") appears above the feed when `NetworkMonitor.isOnline` reports false. `SyncIssuesBanner` shows the count of mutations that exhausted retries; tapping "View" opens `SyncErrorsSheet` with per-row Retry/Discard.
 - **Material You**: Dynamic color theming on Android 12+, dark mode support
 - **Navigation gate**: First launch → Settings; after API key → Feed
 - **ProGuard/R8**: Release builds use minification, resource shrinking, and targeted keep rules. Release buildType uses debug signing config as fallback for CI builds.

@@ -4,6 +4,8 @@ import dev.russell.fatebook.data.local.CommentDao
 import dev.russell.fatebook.data.local.CommentEntity
 import dev.russell.fatebook.data.local.ForecastDao
 import dev.russell.fatebook.data.local.ForecastEntity
+import dev.russell.fatebook.data.local.PendingMutationDao
+import dev.russell.fatebook.data.local.PendingMutationEntity
 import dev.russell.fatebook.data.local.QuestionDao
 import dev.russell.fatebook.data.local.QuestionEntity
 import dev.russell.fatebook.data.local.Transactor
@@ -11,6 +13,14 @@ import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.FatebookApi
 import dev.russell.fatebook.data.remote.dto.CommentDto
 import dev.russell.fatebook.data.remote.dto.QuestionDto
+import dev.russell.fatebook.data.sync.AddCommentPayload
+import dev.russell.fatebook.data.sync.AddForecastPayload
+import dev.russell.fatebook.data.sync.CreateQuestionPayload
+import dev.russell.fatebook.data.sync.EditPayload
+import dev.russell.fatebook.data.sync.MutationEnqueuer
+import dev.russell.fatebook.data.sync.ResolvePayload
+import dev.russell.fatebook.data.sync.SetSharedPayload
+import dev.russell.fatebook.data.sync.SyncScheduler
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Forecast
 import dev.russell.fatebook.domain.model.Question
@@ -21,7 +31,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,8 +41,11 @@ class QuestionRepository @Inject constructor(
     private val dao: QuestionDao,
     private val forecastDao: ForecastDao,
     private val commentDao: CommentDao,
+    private val pendingDao: PendingMutationDao,
     private val prefs: UserPreferences,
     private val transactor: Transactor,
+    private val enqueuer: MutationEnqueuer,
+    private val syncScheduler: SyncScheduler,
 ) {
     private var nextCursor: Int? = null
 
@@ -44,8 +57,6 @@ class QuestionRepository @Inject constructor(
         dao.observeActive().map { entities -> entities.map { it.toDomain() } }
 
     fun observeReadyToResolve(): Flow<List<Question>> {
-        // Convert today's local date to UTC midnight epoch ms for comparison
-        // against the stored UTC-midnight resolveByEpochMs values
         val todayUtcMs = LocalDate.now()
             .atStartOfDay(ZoneOffset.UTC)
             .toInstant()
@@ -73,8 +84,8 @@ class QuestionRepository @Inject constructor(
 
     /**
      * Fetch first page from API and merge into local cache as a single transaction.
-     * Questions not present in the response are pruned (set-diff). Forecasts and
-     * comments cascade-delete via foreign key.
+     * Questions not present in the response are pruned, EXCEPT locally-created ones
+     * (id prefixed `local-`) that haven't synced yet.
      */
     suspend fun refresh(): List<Question> {
         val response = api.getQuestions()
@@ -97,10 +108,6 @@ class QuestionRepository @Inject constructor(
 
     fun hasMore(): Boolean = nextCursor != null
 
-    /**
-     * Fetch all pages from API, then merge into the cache as a single transaction.
-     * Collecting first means subscribers only see one update at the end, not one per page.
-     */
     suspend fun loadAllQuestions() {
         val collected = mutableListOf<QuestionDto>()
         var cursor: Int? = null
@@ -114,19 +121,15 @@ class QuestionRepository @Inject constructor(
         captureDisplayName(collected)
     }
 
-    /**
-     * Atomic set-diff merge: upsert all [dtos] and (optionally) delete questions
-     * not in [dtos]. Forecasts and comments for each refreshed question are
-     * replaced wholesale, but only within the affected questions — others are
-     * left untouched.
-     */
     private suspend fun commitDtos(dtos: List<QuestionDto>, prune: Boolean) {
         val questionEntities = dtos.map { it.toEntity() }
-        val keepIds = dtos.map { it.id }
+        // Keep server ids from the response + any local-only ids that haven't synced.
+        val localOnlyIds = dao.getAllIds()
+            .filter { it.startsWith(PendingMutationEntity.LOCAL_ID_PREFIX) }
+        val keepIds = dtos.map { it.id } + localOnlyIds
         transactor.transact {
             dao.upsertAll(questionEntities)
             if (prune) {
-                // CASCADE on FK removes orphaned forecasts/comments for pruned questions.
                 dao.deleteByIdsNotIn(keepIds)
             }
             for (dto in dtos) {
@@ -146,29 +149,63 @@ class QuestionRepository @Inject constructor(
         if (name != null) prefs.displayName = name
     }
 
+    // ---------- Optimistic mutations ----------
+    //
+    // Every mutation: apply the change to Room AND insert a PendingMutationEntity in
+    // the same transaction. Then trigger SyncWorker. The caller's coroutine never
+    // awaits the network — the queue does that later.
+
     suspend fun createQuestion(
         title: String,
         resolveBy: LocalDate,
         forecast: Double,
     ): String {
-        val resolveByStr = resolveBy.format(DateTimeFormatter.ISO_LOCAL_DATE)
-        val url = api.createQuestion(title, resolveByStr, forecast)
-        // Record that user made a prediction today
-        prefs.setLastPredictionDate(System.currentTimeMillis())
-        // Refresh cache to include the new question (server-assigned ID isn't returned).
-        // The new refresh is non-destructive, so subscribers see one stable update.
-        refresh()
-        return url
+        val localId = PendingMutationEntity.LOCAL_ID_PREFIX + UUID.randomUUID()
+        val resolveByMs = resolveBy.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val nowMs = System.currentTimeMillis()
+        val question = QuestionEntity(
+            id = localId,
+            title = title,
+            resolveByEpochMs = resolveByMs,
+            createdAtEpochMs = nowMs,
+            resolution = null,
+            resolved = false,
+            latestForecast = forecast,
+            latestForecastAtEpochMs = nowMs,
+            url = "",
+            forecastHiddenUntilEpochMs = null,
+            notes = null,
+            sharedPublicly = false,
+            unlisted = false,
+        )
+        transactor.transact {
+            dao.upsertAll(listOf(question))
+            forecastDao.upsertAll(
+                listOf(
+                    ForecastEntity(
+                        questionId = localId,
+                        forecast = forecast,
+                        createdAtEpochMs = nowMs,
+                    ),
+                ),
+            )
+            enqueuer.enqueueCreate(
+                questionLocalId = localId,
+                payload = CreateQuestionPayload(
+                    title = title,
+                    resolveByEpochMs = resolveByMs,
+                    forecast = forecast,
+                    notes = null,
+                ),
+                createdAtEpochMs = nowMs,
+            )
+        }
+        prefs.setLastPredictionDate(nowMs)
+        syncScheduler.schedule()
+        return localId
     }
 
     suspend fun addForecast(questionId: String, forecast: Double) {
-        val apiKey = prefs.apiKey ?: error("No API key configured")
-        api.addForecast(
-            questionId = questionId,
-            forecast = forecast,
-            apiKey = apiKey,
-        )
-        prefs.setLastPredictionDate(System.currentTimeMillis())
         val nowMs = System.currentTimeMillis()
         transactor.transact {
             dao.updateLatestForecast(questionId, forecast, nowMs)
@@ -181,17 +218,18 @@ class QuestionRepository @Inject constructor(
                     ),
                 ),
             )
+            enqueuer.enqueueAddForecast(questionId, AddForecastPayload(forecast))
         }
+        prefs.setLastPredictionDate(nowMs)
+        syncScheduler.schedule()
     }
 
     suspend fun resolveQuestion(questionId: String, resolution: Resolution) {
-        val apiKey = prefs.apiKey ?: error("No API key configured")
-        api.resolveQuestion(
-            questionId = questionId,
-            resolution = resolution.apiValue,
-            apiKey = apiKey,
-        )
-        dao.updateResolution(questionId, resolution.apiValue)
+        transactor.transact {
+            dao.updateResolution(questionId, resolution.apiValue)
+            enqueuer.enqueueResolve(questionId, ResolvePayload(resolution.apiValue))
+        }
+        syncScheduler.schedule()
     }
 
     suspend fun validateApiKey(): Boolean {
@@ -203,81 +241,130 @@ class QuestionRepository @Inject constructor(
         }
     }
 
-    /** Edit question fields. Only non-null params are sent to the API and applied locally. */
     suspend fun editQuestion(
         questionId: String,
         title: String? = null,
         resolveBy: LocalDate? = null,
         notes: String? = null,
     ) {
-        val apiKey = prefs.apiKey ?: error("No API key configured")
-        api.editQuestion(
-            questionId = questionId,
-            title = title,
-            resolveBy = resolveBy?.format(DateTimeFormatter.ISO_LOCAL_DATE),
-            notes = notes,
-            apiKey = apiKey,
-        )
-        dao.updateFields(
-            questionId = questionId,
-            title = title,
-            resolveByEpochMs = resolveBy?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli(),
-            notes = notes,
-            hasNotes = if (notes != null) 1 else 0,
-        )
+        val resolveByMs = resolveBy?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
+        transactor.transact {
+            dao.updateFields(
+                questionId = questionId,
+                title = title,
+                resolveByEpochMs = resolveByMs,
+                notes = notes,
+                hasNotes = if (notes != null) 1 else 0,
+            )
+            enqueuer.enqueueEdit(
+                questionId,
+                EditPayload(title = title, resolveByEpochMs = resolveByMs, notes = notes),
+            )
+        }
+        syncScheduler.schedule()
     }
 
-    /** Delete a question. */
+    /**
+     * Delete a question. If the question only exists locally (id prefixed `local-`)
+     * AND its CREATE_QUESTION mutation hasn't synced yet, we collapse the whole
+     * `[CREATE, …, DELETE]` chain — drop the local row, drop all queued mutations
+     * for it, never bother the server.
+     */
     suspend fun deleteQuestion(questionId: String) {
-        api.deleteQuestion(questionId = questionId)
-        dao.deleteById(questionId)
+        val isLocal = questionId.startsWith(PendingMutationEntity.LOCAL_ID_PREFIX)
+        transactor.transact {
+            dao.deleteById(questionId)
+            if (isLocal) {
+                pendingDao.deleteByQuestion(questionId)
+            } else {
+                enqueuer.enqueueDelete(questionId)
+            }
+        }
+        if (!isLocal) {
+            syncScheduler.schedule()
+        }
     }
 
-    /** Load comments for a question from local cache. */
     suspend fun getCommentsForQuestion(questionId: String): List<Comment> {
         return commentDao.getByQuestionId(questionId).map { it.toDomain() }
     }
 
-    /** Add a comment to a question. Returns the newly created Comment. */
     suspend fun addComment(questionId: String, comment: String): Comment {
-        val apiKey = prefs.apiKey ?: error("No API key configured")
-        api.addComment(questionId = questionId, comment = comment, apiKey = apiKey)
         val now = Instant.now()
+        val nowMs = now.toEpochMilli()
         val userName = prefs.displayName
-        val newComment = Comment(
-            id = "local_${now.toEpochMilli()}",
+        val localCommentId = "local-comment-${UUID.randomUUID()}"
+        val entity = CommentEntity(
+            id = localCommentId,
+            questionId = questionId,
+            userId = "",
+            userName = userName,
+            comment = comment,
+            createdAtEpochMs = nowMs,
+        )
+        transactor.transact {
+            commentDao.insert(entity)
+            enqueuer.enqueueAddComment(questionId, AddCommentPayload(comment))
+        }
+        syncScheduler.schedule()
+        return Comment(
+            id = localCommentId,
             userId = "",
             userName = userName,
             comment = comment,
             createdAt = now,
         )
-        commentDao.insert(
-            CommentEntity(
-                id = newComment.id,
-                questionId = questionId,
-                userId = "",
-                userName = userName,
-                comment = comment,
-                createdAtEpochMs = now.toEpochMilli(),
-            )
-        )
-        return newComment
     }
 
-    /** Toggle public visibility of a question. */
     suspend fun setSharedPublicly(
         questionId: String,
         sharedPublicly: Boolean,
         unlisted: Boolean,
     ) {
-        val apiKey = prefs.apiKey ?: error("No API key configured")
-        api.setSharedPublicly(
-            questionId = questionId,
-            sharedPublicly = sharedPublicly,
-            unlisted = unlisted,
-            apiKey = apiKey,
+        transactor.transact {
+            dao.updateSharing(questionId, sharedPublicly, unlisted)
+            enqueuer.enqueueSetShared(
+                questionId,
+                SetSharedPayload(sharedPublicly = sharedPublicly, unlisted = unlisted),
+            )
+        }
+        syncScheduler.schedule()
+    }
+
+    // --- Sync-error UI helpers ---
+
+    fun observePendingMutationCount(): Flow<Int> = pendingDao.observeErroredCount()
+
+    fun observeErroredMutations(): Flow<List<PendingMutationEntity>> =
+        pendingDao.observeErrored()
+
+    suspend fun retryAllErroredMutations() {
+        pendingDao.retryAllErrored()
+        syncScheduler.schedule()
+    }
+
+    /**
+     * Drop an errored mutation from the queue. For an errored CREATE_QUESTION,
+     * if the server appears to already have a copy of the question, also drop
+     * the local-id duplicate so the feed isn't permanently double-listed.
+     */
+    suspend fun discardErroredMutation(id: Long) {
+        val mutation = pendingDao.getById(id)
+        pendingDao.delete(id)
+        if (mutation == null) return
+        if (mutation.type != PendingMutationEntity.TYPE_CREATE_QUESTION) return
+        if (!mutation.questionLocalId.startsWith(PendingMutationEntity.LOCAL_ID_PREFIX)) return
+
+        val payload = enqueuer.decodeCreate(mutation.payloadJson)
+        // 24h window for recovery — the user might be discarding hours after the failure.
+        val serverCopy = dao.findCreatedNear(
+            title = payload.title,
+            aroundEpochMs = mutation.createdAtEpochMs,
+            windowMs = 24L * 60 * 60 * 1000,
         )
-        dao.updateSharing(questionId, sharedPublicly, unlisted)
+        if (serverCopy != null) {
+            dao.deleteById(mutation.questionLocalId)
+        }
     }
 
     // --- Mappers ---
@@ -392,13 +479,12 @@ class QuestionRepository @Inject constructor(
             resolved = resolved,
             yourLatestForecast = latestForecast,
             latestForecastAt = latestForecastAtEpochMs?.let { Instant.ofEpochMilli(it) },
-            forecasts = emptyList(), // Not stored locally
+            forecasts = emptyList(),
             url = url,
             forecastHiddenUntil = forecastHiddenUntilEpochMs?.let { Instant.ofEpochMilli(it) },
             notes = notes,
             sharedPublicly = sharedPublicly,
             unlisted = unlisted,
-            // Comments loaded separately via getCommentsForQuestion()
         )
     }
 
@@ -407,7 +493,6 @@ class QuestionRepository @Inject constructor(
             Instant.parse(dateStr)
         } catch (_: Exception) {
             try {
-                // Handle YYYY-MM-DD format (defaults to midnight UTC)
                 LocalDate.parse(dateStr)
                     .atStartOfDay(ZoneId.of("UTC"))
                     .toInstant()

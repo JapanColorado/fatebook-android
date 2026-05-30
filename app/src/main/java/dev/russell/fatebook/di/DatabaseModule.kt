@@ -11,6 +11,7 @@ import dagger.hilt.components.SingletonComponent
 import dev.russell.fatebook.data.local.FatebookDatabase
 import dev.russell.fatebook.data.local.CommentDao
 import dev.russell.fatebook.data.local.ForecastDao
+import dev.russell.fatebook.data.local.PendingMutationDao
 import dev.russell.fatebook.data.local.QuestionDao
 import dev.russell.fatebook.data.local.Transactor
 import javax.inject.Singleton
@@ -40,6 +41,10 @@ object DatabaseModule {
     @Provides
     fun provideCommentDao(database: FatebookDatabase): CommentDao =
         database.commentDao()
+
+    @Provides
+    fun providePendingMutationDao(database: FatebookDatabase): PendingMutationDao =
+        database.pendingMutationDao()
 
     @Provides
     @Singleton

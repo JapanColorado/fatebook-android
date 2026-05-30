@@ -12,6 +12,7 @@ import androidx.room.PrimaryKey
         parentColumns = ["id"],
         childColumns = ["questionId"],
         onDelete = ForeignKey.CASCADE,
+        onUpdate = ForeignKey.CASCADE,
     )],
     indices = [Index("questionId")],
 )

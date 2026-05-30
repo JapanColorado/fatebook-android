@@ -41,8 +41,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.russell.fatebook.ui.components.ErrorBanner
+import dev.russell.fatebook.ui.components.OfflineBanner
 import dev.russell.fatebook.ui.components.QuestionCard
 import dev.russell.fatebook.ui.components.ShimmerQuestionCardList
+import dev.russell.fatebook.ui.components.SyncErrorsSheet
+import dev.russell.fatebook.ui.components.SyncIssuesBanner
 import dev.russell.fatebook.ui.detail.QuestionDetailSheet
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -98,6 +101,10 @@ fun FeedScreen(
         onCommentTextChange = viewModel::setCommentText,
         onAddComment = viewModel::addComment,
         onToggleSharedPublicly = viewModel::toggleSharedPublicly,
+        onShowSyncErrors = viewModel::showSyncErrorsSheet,
+        onDismissSyncErrorsSheet = viewModel::dismissSyncErrorsSheet,
+        onRetryAllSyncErrors = viewModel::retryAllSyncErrors,
+        onDiscardSyncError = viewModel::discardSyncError,
     )
 }
 
@@ -130,6 +137,10 @@ fun FeedScreenContent(
     onCommentTextChange: (String) -> Unit = {},
     onAddComment: () -> Unit = {},
     onToggleSharedPublicly: () -> Unit = {},
+    onShowSyncErrors: () -> Unit = {},
+    onDismissSyncErrorsSheet: () -> Unit = {},
+    onRetryAllSyncErrors: () -> Unit = {},
+    onDiscardSyncError: (Long) -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -217,6 +228,17 @@ fun FeedScreenContent(
                     onDismiss = onDismissError,
                     actionLabel = if (state.error is FeedError.Auth) "Settings" else "Retry",
                     onAction = if (state.error is FeedError.Auth) onSettingsClick else null,
+                )
+            }
+
+            if (state.isOffline) {
+                OfflineBanner()
+            }
+
+            if (state.syncErrors.isNotEmpty()) {
+                SyncIssuesBanner(
+                    count = state.syncErrors.size,
+                    onView = onShowSyncErrors,
                 )
             }
 
@@ -308,6 +330,16 @@ fun FeedScreenContent(
                 }
             }
         }
+    }
+
+    // Sync errors sheet
+    if (state.showSyncErrorsSheet) {
+        SyncErrorsSheet(
+            errors = state.syncErrors,
+            onRetryAll = onRetryAllSyncErrors,
+            onDiscard = onDiscardSyncError,
+            onDismiss = onDismissSyncErrorsSheet,
+        )
     }
 
     // Detail bottom sheet

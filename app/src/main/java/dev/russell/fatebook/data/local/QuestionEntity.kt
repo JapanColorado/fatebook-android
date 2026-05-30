@@ -18,6 +18,7 @@ data class QuestionEntity(
     val createdAtEpochMs: Long,
     val resolution: String?, // YES / NO / AMBIGUOUS / null
     val resolved: Boolean,
+    val resolvedAtEpochMs: Long? = null,
     val latestForecast: Double?,
     val latestForecastAtEpochMs: Long?,
     val url: String,

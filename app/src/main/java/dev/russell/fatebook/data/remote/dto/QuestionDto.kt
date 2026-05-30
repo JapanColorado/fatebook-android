@@ -17,6 +17,7 @@ data class QuestionDto(
     @Json(name = "createdAt") val createdAt: String, // ISO 8601
     val resolution: String?, // YES / NO / AMBIGUOUS / null
     val resolved: Boolean,
+    val resolvedAt: String? = null, // ISO 8601; when the question was resolved
     val url: String?,
     val forecasts: List<ForecastDto>?,
     val notes: String?,

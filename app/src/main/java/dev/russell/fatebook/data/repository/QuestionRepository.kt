@@ -226,7 +226,7 @@ class QuestionRepository @Inject constructor(
 
     suspend fun resolveQuestion(questionId: String, resolution: Resolution) {
         transactor.transact {
-            dao.updateResolution(questionId, resolution.apiValue)
+            dao.updateResolution(questionId, resolution.apiValue, System.currentTimeMillis())
             enqueuer.enqueueResolve(questionId, ResolvePayload(resolution.apiValue))
         }
         syncScheduler.schedule()
@@ -381,6 +381,7 @@ class QuestionRepository @Inject constructor(
             createdAtEpochMs = parseInstant(createdAt).toEpochMilli(),
             resolution = resolution,
             resolved = resolved,
+            resolvedAtEpochMs = resolvedAt?.let { parseInstant(it).toEpochMilli() },
             latestForecast = latest?.forecast,
             latestForecastAtEpochMs = latest?.createdAt?.let { parseInstant(it).toEpochMilli() },
             url = url ?: "https://fatebook.io/q/$id",
@@ -449,6 +450,7 @@ class QuestionRepository @Inject constructor(
             createdAt = parseInstant(createdAt),
             resolution = resolution?.let { Resolution.fromApi(it) },
             resolved = resolved,
+            resolvedAt = resolvedAt?.let { parseInstant(it) },
             yourLatestForecast = latest?.forecast,
             latestForecastAt = latest?.createdAt?.let { parseInstant(it) },
             forecasts = forecasts?.map { dto ->
@@ -477,6 +479,7 @@ class QuestionRepository @Inject constructor(
             createdAt = Instant.ofEpochMilli(createdAtEpochMs),
             resolution = resolution?.let { Resolution.fromApi(it) },
             resolved = resolved,
+            resolvedAt = resolvedAtEpochMs?.let { Instant.ofEpochMilli(it) },
             yourLatestForecast = latestForecast,
             latestForecastAt = latestForecastAtEpochMs?.let { Instant.ofEpochMilli(it) },
             forecasts = emptyList(),

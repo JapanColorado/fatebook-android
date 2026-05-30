@@ -10,7 +10,7 @@ import androidx.room.RoomDatabase
         CommentEntity::class,
         PendingMutationEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class FatebookDatabase : RoomDatabase() {

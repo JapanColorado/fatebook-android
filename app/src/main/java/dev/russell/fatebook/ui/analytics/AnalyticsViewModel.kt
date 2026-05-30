@@ -80,17 +80,33 @@ class AnalyticsViewModel @Inject constructor(
             forecastsByQuestion: Map<String, List<ForecastEntity>>,
         ): Int = scoredPairs(resolvedQuestions, forecastsByQuestion).size
 
+        /**
+         * Overall Brier score matching fatebook.io: two-sided and per-question
+         * time-weighted (see [BrierScoring]). Each scored question contributes
+         * equally regardless of how many times it was forecasted.
+         */
         fun computeBrierScore(
             resolvedQuestions: List<Question>,
             forecastsByQuestion: Map<String, List<ForecastEntity>>,
         ): Double? {
-            val pairs = scoredPairs(resolvedQuestions, forecastsByQuestion)
-            if (pairs.isEmpty()) return null
-            val sum = pairs.sumOf { (forecast, resolution) ->
-                val outcome = if (resolution == Resolution.YES) 1.0 else 0.0
-                (forecast - outcome) * (forecast - outcome)
-            }
-            return sum / pairs.size
+            val scoringQuestions = resolvedQuestions
+                .filter { it.resolution == Resolution.YES || it.resolution == Resolution.NO }
+                .mapNotNull { q ->
+                    val forecasts = forecastsByQuestion[q.id]
+                        ?.map { BrierScoring.TimedForecast(it.createdAtEpochMs, it.forecast) }
+                        ?: emptyList()
+                    if (forecasts.isEmpty()) return@mapNotNull null
+                    // resolvedAt is the canonical resolution time; fall back to
+                    // resolveBy for rows cached before resolvedAt was tracked.
+                    val resolvedAtMs = (q.resolvedAt ?: q.resolveBy).toEpochMilli()
+                    BrierScoring.QuestionForScoring(
+                        createdAtMs = q.createdAt.toEpochMilli(),
+                        resolvedAtMs = resolvedAtMs,
+                        resolvedYes = q.resolution == Resolution.YES,
+                        forecasts = forecasts,
+                    )
+                }
+            return BrierScoring.overallBrierScore(scoringQuestions)
         }
 
         fun computeCalibrationBuckets(

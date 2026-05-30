@@ -118,11 +118,11 @@ interface QuestionDao {
     @Query(
         """
         UPDATE questions
-        SET resolved = 1, resolution = :resolution
+        SET resolved = 1, resolution = :resolution, resolvedAtEpochMs = :resolvedAtEpochMs
         WHERE id = :questionId
         """
     )
-    suspend fun updateResolution(questionId: String, resolution: String)
+    suspend fun updateResolution(questionId: String, resolution: String, resolvedAtEpochMs: Long)
 
     @Query(
         """

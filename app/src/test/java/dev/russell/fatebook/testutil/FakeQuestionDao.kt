@@ -84,9 +84,21 @@ class FakeQuestionDao : QuestionDao {
         }
     }
 
-    override suspend fun updateResolution(questionId: String, resolution: String) {
+    override suspend fun updateResolution(
+        questionId: String,
+        resolution: String,
+        resolvedAtEpochMs: Long,
+    ) {
         _questions.value = _questions.value.map {
-            if (it.id == questionId) it.copy(resolved = true, resolution = resolution) else it
+            if (it.id == questionId) {
+                it.copy(
+                    resolved = true,
+                    resolution = resolution,
+                    resolvedAtEpochMs = resolvedAtEpochMs,
+                )
+            } else {
+                it
+            }
         }
     }
 

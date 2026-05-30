@@ -137,6 +137,22 @@ class QuestionRepositoryTest {
         assertThat(result[0].title).isEqualTo("Test?")
     }
 
+    @Test
+    fun `refresh maps resolvedAt into the cache`() = runTest {
+        val dto = TestData.questionDto(
+            id = "q1",
+            resolved = true,
+            resolution = "YES",
+            resolvedAt = "2024-03-15T12:00:00Z",
+        )
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto)) }
+
+        repository.refresh()
+
+        val expected = java.time.Instant.parse("2024-03-15T12:00:00Z").toEpochMilli()
+        assertThat(dao.storedQuestions.single().resolvedAtEpochMs).isEqualTo(expected)
+    }
+
     // --- loadMore ---
 
     @Test
@@ -294,6 +310,7 @@ class QuestionRepositoryTest {
 
         assertThat(dao.storedQuestions[0].resolved).isTrue()
         assertThat(dao.storedQuestions[0].resolution).isEqualTo("YES")
+        assertThat(dao.storedQuestions[0].resolvedAtEpochMs).isNotNull()
         assertThat(pendingDao.stored.single().type).isEqualTo(PendingMutationEntity.TYPE_RESOLVE)
         assertThat(api.resolveQuestionCalls).isEmpty()
         assertThat(scheduleCallCount).isEqualTo(1)

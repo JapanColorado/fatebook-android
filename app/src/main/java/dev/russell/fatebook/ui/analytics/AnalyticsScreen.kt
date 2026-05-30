@@ -184,7 +184,8 @@ private fun BrierScoreCard(
                     onDismissRequest = { showTooltip = false },
                 ) {
                     Text(
-                        text = "Lower is better. Perfect = 0.0",
+                        text = "Lower is better. Perfect = 0.0, " +
+                            "always-50% = 0.5 (matches fatebook.io).",
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                     )

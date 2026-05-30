@@ -16,6 +16,12 @@
 
 ## Archive
 
+### Brier score accuracy (match fatebook.io)
+- [x] Brier score was off — diagnosed against Fatebook's source (`Sage-Future/fatebook` `lib/_scoring.ts`): app used the one-sided Brier (half of Fatebook's two-sided value) and pooled all forecasts into one flat average
+- [x] New `BrierScoring` faithfully ports Fatebook's algorithm: two-sided Brier (`2·(f-t)²`, range 0–2, always-50% → 0.5) and per-question daily time-weighting, then equal-weight mean across questions (a heavily-updated question no longer dominates)
+- [x] Plumbed `resolvedAt` through `QuestionDto` → `QuestionEntity` (DB 9→10) → `Question`; offline resolves stamp `resolvedAtEpochMs = now`; pre-existing cache rows fall back to `resolveBy`
+- [x] Tests: `BrierScoringTest` (two-sided formula, time-weighting, fractional days, per-question weighting, edge cases) + rewritten `AnalyticsViewModelTest` Brier section + repository `resolvedAt` mapping/offline-resolve assertions
+
 ### Offline writes
 - [x] Optimistic write architecture: every mutation applies to Room synchronously and is queued in `pending_mutations` for background sync by a `SyncWorker` (NetworkType.CONNECTED constraint)
 - [x] Offline-created questions use `local-<uuid>` ids; reconcile to the server id by parsing the `--<cuid>` suffix of the URL returned by `createQuestion` (with title+createdAt window as fallback)

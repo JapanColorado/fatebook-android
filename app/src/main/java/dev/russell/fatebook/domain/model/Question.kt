@@ -14,6 +14,7 @@ data class Question(
     val createdAt: Instant,
     val resolution: Resolution?,
     val resolved: Boolean,
+    val resolvedAt: Instant? = null,
     val yourLatestForecast: Double?,
     val latestForecastAt: Instant?,
     val forecasts: List<Forecast>,

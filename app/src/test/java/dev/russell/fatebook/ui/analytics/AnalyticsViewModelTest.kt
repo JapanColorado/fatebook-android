@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -29,6 +30,9 @@ class AnalyticsViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private val repository = mockk<QuestionRepository>(relaxed = true)
+
+    private val base: Instant = Instant.parse("2024-01-01T00:00:00Z")
+    private val dayMs = 1000L * 60 * 60 * 24
 
     @Before
     fun setup() {
@@ -47,65 +51,107 @@ class AnalyticsViewModelTest {
         return AnalyticsViewModel(repository)
     }
 
-    private fun forecast(questionId: String, value: Double, createdAtMs: Long = 0L) =
+    private fun forecast(questionId: String, value: Double, createdAtMs: Long = base.toEpochMilli()) =
         ForecastEntity(questionId = questionId, forecast = value, createdAtEpochMs = createdAtMs)
 
-    // --- Brier Score ---
+    /** A resolved question with a known 10-day [base, base+10d] scoring window. */
+    private fun resolvedQuestion(
+        id: String,
+        resolution: Resolution,
+        createdAt: Instant = base,
+        resolvedAt: Instant? = base.plusMillis(10 * dayMs),
+    ) = TestData.question(
+        id = id,
+        resolved = true,
+        resolution = resolution,
+        createdAt = createdAt,
+        resolvedAt = resolvedAt,
+    )
+
+    // --- Brier Score (two-sided, time-weighted; matches fatebook.io) ---
 
     @Test
-    fun `brier score calculation with known data`() {
-        // forecast 0.8, resolved YES -> (0.8 - 1.0)^2 = 0.04
-        val questions = listOf(
-            TestData.question(id = "q1", resolved = true, resolution = Resolution.YES),
-        )
+    fun `brier score uses the two-sided fatebook formula`() {
+        // 0.8 held the whole window, resolved YES -> two-sided brier = 0.08
+        // (the old one-sided value was 0.04 — half of this).
+        val questions = listOf(resolvedQuestion("q1", Resolution.YES))
         val forecasts = mapOf("q1" to listOf(forecast("q1", 0.8)))
         val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
-        assertThat(score).isWithin(0.0001).of(0.04)
+        assertThat(score).isWithin(0.0001).of(0.08)
     }
 
     @Test
-    fun `brier score with multiple forecasts on same question`() {
-        // q1: forecasts 0.8 and 0.6, resolved YES
-        // (0.8 - 1.0)^2 = 0.04, (0.6 - 1.0)^2 = 0.16
-        // average = 0.10
-        val questions = listOf(
-            TestData.question(id = "q1", resolved = true, resolution = Resolution.YES),
+    fun `brier score time-weights multiple forecasts on the same question`() {
+        // 0.6 for days 0-5 then 0.9 for days 5-10, resolved YES.
+        // (5*brier(0.6) + 5*brier(0.9)) / 10 = (5*0.32 + 5*0.02)/10 = 0.17
+        val questions = listOf(resolvedQuestion("q1", Resolution.YES))
+        val forecasts = mapOf(
+            "q1" to listOf(
+                forecast("q1", 0.6, base.toEpochMilli()),
+                forecast("q1", 0.9, base.plusMillis(5 * dayMs).toEpochMilli()),
+            ),
         )
-        val forecasts = mapOf("q1" to listOf(forecast("q1", 0.8), forecast("q1", 0.6)))
         val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
-        assertThat(score).isWithin(0.0001).of(0.10)
+        assertThat(score).isWithin(0.0001).of(0.17)
     }
 
     @Test
-    fun `brier score with multiple questions`() {
-        // q1: forecast 0.8, YES -> 0.04
-        // q2: forecast 0.3, NO -> 0.09
-        // average = 0.065
+    fun `brier score weights each question equally`() {
+        // q1: 0.8 YES -> 0.08 ; q2: 0.3 NO -> 0.18 ; mean = 0.13
         val questions = listOf(
-            TestData.question(id = "q1", resolved = true, resolution = Resolution.YES),
-            TestData.question(id = "q2", resolved = true, resolution = Resolution.NO),
+            resolvedQuestion("q1", Resolution.YES),
+            resolvedQuestion("q2", Resolution.NO),
         )
         val forecasts = mapOf(
             "q1" to listOf(forecast("q1", 0.8)),
             "q2" to listOf(forecast("q2", 0.3)),
         )
         val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
-        assertThat(score).isWithin(0.0001).of(0.065)
+        assertThat(score).isWithin(0.0001).of(0.13)
+    }
+
+    @Test
+    fun `brier score falls back to resolveBy when resolvedAt is missing`() {
+        // Cached rows synced before resolvedAt was tracked: resolveBy is the window end.
+        val resolveBy = base.plusMillis(10 * dayMs)
+        val q = TestData.question(
+            id = "q1",
+            resolved = true,
+            resolution = Resolution.YES,
+            createdAt = base,
+            resolveBy = resolveBy,
+            resolvedAt = null,
+        )
+        val forecasts = mapOf("q1" to listOf(forecast("q1", 0.8)))
+        val score = AnalyticsViewModel.computeBrierScore(listOf(q), forecasts)
+        assertThat(score).isWithin(0.0001).of(0.08)
     }
 
     @Test
     fun `brier score skips AMBIGUOUS resolutions`() {
         val questions = listOf(
-            TestData.question(id = "q1", resolved = true, resolution = Resolution.YES),
-            TestData.question(id = "q2", resolved = true, resolution = Resolution.AMBIGUOUS),
+            resolvedQuestion("q1", Resolution.YES),
+            resolvedQuestion("q2", Resolution.AMBIGUOUS),
         )
         val forecasts = mapOf(
             "q1" to listOf(forecast("q1", 0.8)),
             "q2" to listOf(forecast("q2", 0.5)),
         )
         val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
-        // Only q1 counted: (0.8 - 1.0)^2 = 0.04
-        assertThat(score).isWithin(0.0001).of(0.04)
+        // Only q1 counted -> 0.08
+        assertThat(score).isWithin(0.0001).of(0.08)
+    }
+
+    @Test
+    fun `brier score ignores questions with no forecasts`() {
+        val questions = listOf(
+            resolvedQuestion("q1", Resolution.YES),
+            resolvedQuestion("q2", Resolution.NO),
+        )
+        // Only q1 has forecasts; q2 contributes nothing -> 0.08.
+        val forecasts = mapOf("q1" to listOf(forecast("q1", 0.8)))
+        val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
+        assertThat(score).isWithin(0.0001).of(0.08)
     }
 
     @Test

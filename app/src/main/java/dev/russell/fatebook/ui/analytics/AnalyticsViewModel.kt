@@ -109,17 +109,26 @@ class AnalyticsViewModel @Inject constructor(
             return BrierScoring.overallBrierScore(scoringQuestions)
         }
 
+        /**
+         * Folded calibration: forecasts below 50% are converted to their complement
+         * (predict 1-p for the opposite outcome), so all buckets live in 50-100%.
+         * A forecast of exactly 50% keeps its original orientation.
+         */
         fun computeCalibrationBuckets(
             resolvedQuestions: List<Question>,
             forecastsByQuestion: Map<String, List<ForecastEntity>>,
         ): List<CalibrationBucket> {
-            val pairs = scoredPairs(resolvedQuestions, forecastsByQuestion)
+            val folded = scoredPairs(resolvedQuestions, forecastsByQuestion)
+                .map { (forecast, resolution) ->
+                    if (forecast < 0.5) (1 - forecast) to (resolution == Resolution.NO)
+                    else forecast to (resolution == Resolution.YES)
+                }
 
             val bucketSize = 5
-            val bucketRanges = (0 until 100 step bucketSize).map { it to it + bucketSize }
+            val bucketRanges = (50 until 100 step bucketSize).map { it to it + bucketSize }
 
             return bucketRanges.mapNotNull { (low, high) ->
-                val inBucket = pairs.filter { (forecast, _) ->
+                val inBucket = folded.filter { (forecast, _) ->
                     val pct = forecast * 100
                     if (high == 100) pct >= low && pct <= high
                     else pct >= low && pct < high
@@ -127,8 +136,8 @@ class AnalyticsViewModel @Inject constructor(
                 if (inBucket.isEmpty()) return@mapNotNull null
 
                 val bucketCenter = (low + high) / 2f / 100f
-                val yesCount = inBucket.count { (_, resolution) -> resolution == Resolution.YES }
-                val actualRate = yesCount.toFloat() / inBucket.size.toFloat()
+                val hitCount = inBucket.count { (_, hit) -> hit }
+                val actualRate = hitCount.toFloat() / inBucket.size.toFloat()
 
                 CalibrationBucket(
                     rangeLabel = "$low-$high%",

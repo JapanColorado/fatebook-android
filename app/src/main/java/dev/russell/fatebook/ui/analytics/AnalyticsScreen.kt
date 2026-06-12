@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
@@ -62,7 +63,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -254,10 +254,18 @@ private fun StreakChip(
     )
 }
 
+/** Number of 5%-wide bar slots spanning the folded 50-100% x-axis. */
+private const val calibrationSlotCount = 10
+
+/** Slot index (0-9) for a bucket, derived from its center (0.525 -> 0, 0.975 -> 9). */
+private fun calibrationSlot(bucket: CalibrationBucket): Int =
+    ((bucket.predictedRate * 100 - 50) / 5).toInt().coerceIn(0, calibrationSlotCount - 1)
+
 @Composable
 private fun CalibrationChart(buckets: List<CalibrationBucket>) {
     var selectedBucketIndex by remember { mutableStateOf<Int?>(null) }
-    val dotPositions = remember { mutableListOf<Offset>() }
+    // Full-height column bounds per bucket, rebuilt on each draw for tap hit-testing.
+    val barColumns = remember { mutableListOf<Pair<Rect, Int>>() }
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val outlineColor = MaterialTheme.colorScheme.outline
@@ -276,7 +284,7 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
     val calibrationDescription = remember(buckets) {
         if (buckets.isEmpty()) "Calibration chart with no data"
         else buildString {
-            append("Calibration chart. ")
+            append("Calibration chart, predictions folded to 50-100%. ")
             buckets.forEach { b ->
                 append("${b.rangeLabel}: ${(b.actualRate * 100).toInt()}% actual, ${b.count} predictions. ")
             }
@@ -295,23 +303,10 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
                 .aspectRatio(1.25f)
                 .semantics { contentDescription = calibrationDescription }
                 .pointerInput(buckets) {
-                    val threshold = 24.dp.toPx()
                     detectTapGestures { offset ->
-                        val nearest = dotPositions.withIndex().minByOrNull { (_, pos) ->
-                            sqrt(
-                                (pos.x - offset.x) * (pos.x - offset.x) +
-                                        (pos.y - offset.y) * (pos.y - offset.y),
-                            )
-                        }
-                        if (nearest != null) {
-                            val dist = sqrt(
-                                (nearest.value.x - offset.x) * (nearest.value.x - offset.x) +
-                                        (nearest.value.y - offset.y) * (nearest.value.y - offset.y),
-                            )
-                            selectedBucketIndex = if (dist <= threshold) nearest.index else null
-                        } else {
-                            selectedBucketIndex = null
-                        }
+                        selectedBucketIndex = barColumns
+                            .firstOrNull { (rect, _) -> rect.contains(offset) }
+                            ?.second
                     }
                 },
         ) {
@@ -321,14 +316,6 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
             val chartRight = size.width - 8.dp.toPx()
             val chartWidth = chartRight - chartLeft
             val chartHeight = chartBottom - chartTop
-
-            drawLine(
-                color = outlineColor,
-                start = Offset(chartLeft, chartBottom),
-                end = Offset(chartRight, chartTop),
-                strokeWidth = 2f,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f)),
-            )
 
             drawLine(
                 color = onSurfaceColor,
@@ -343,7 +330,7 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
                 strokeWidth = 1f,
             )
 
-            val xLabels = listOf("0%", "50%", "100%")
+            val xLabels = listOf("50%", "75%", "100%")
             xLabels.forEachIndexed { i, label ->
                 val x = chartLeft + chartWidth * (i.toFloat() / (xLabels.size - 1))
                 val textResult = textMeasurer.measure(label, labelStyle)
@@ -363,57 +350,74 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
                 )
             }
 
-            if (buckets.isNotEmpty()) {
-                val points = buckets.map { bucket ->
-                    val x = chartLeft + chartWidth * bucket.predictedRate
-                    val y = chartBottom - chartHeight * bucket.actualRate
-                    Offset(x, y)
-                }
+            val slotWidth = chartWidth / calibrationSlotCount
+            val barInset = slotWidth * 0.125f
 
-                dotPositions.clear()
-                dotPositions.addAll(points)
+            barColumns.clear()
+            val barTops = buckets.mapIndexed { i, bucket ->
+                val slot = calibrationSlot(bucket)
+                val slotLeft = chartLeft + slotWidth * slot
+                barColumns.add(
+                    Rect(slotLeft, chartTop, slotLeft + slotWidth, chartBottom) to i,
+                )
 
-                points.forEachIndexed { i, point ->
-                    val radius = 4.dp.toPx() + 2.dp.toPx() * (buckets[i].count.coerceAtMost(10) / 10f)
-                    drawCircle(
-                        color = primaryColor,
-                        radius = radius,
-                        center = point,
+                // A minimum sliver keeps 0%-actual buckets visible and tappable.
+                val barHeight = (chartHeight * bucket.actualRate).coerceAtLeast(2.dp.toPx())
+                val barTop = chartBottom - barHeight
+                val alpha = 0.3f + 0.7f * (bucket.count.coerceAtMost(10) / 10f)
+                drawRect(
+                    color = primaryColor.copy(alpha = alpha),
+                    topLeft = Offset(slotLeft + barInset, barTop),
+                    size = Size(slotWidth - barInset * 2, chartBottom - barTop),
+                )
+                barTop
+            }
+
+            // Perfect calibration: actual == predicted, i.e. (50%, 50%) -> (100%, 100%).
+            // Drawn after the bars so it stays visible over opaque ones.
+            drawLine(
+                color = outlineColor,
+                start = Offset(chartLeft, chartBottom - chartHeight * 0.5f),
+                end = Offset(chartRight, chartTop),
+                strokeWidth = 2f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f)),
+            )
+
+            selectedBucketIndex?.let { idx ->
+                if (idx in buckets.indices) {
+                    val bucket = buckets[idx]
+                    val slot = calibrationSlot(bucket)
+                    val slotLeft = chartLeft + slotWidth * slot
+                    val barTop = barTops[idx]
+
+                    drawRect(
+                        color = onSurfaceColor,
+                        topLeft = Offset(slotLeft + barInset, barTop),
+                        size = Size(slotWidth - barInset * 2, chartBottom - barTop),
+                        style = Stroke(width = 2f),
                     )
-                }
 
-                selectedBucketIndex?.let { idx ->
-                    if (idx in buckets.indices) {
-                        val bucket = buckets[idx]
-                        val point = points[idx]
+                    val tooltipText =
+                        "${bucket.rangeLabel}: ${(bucket.actualRate * 100).toInt()}% actual (n=${bucket.count})"
+                    val textResult = textMeasurer.measure(tooltipText, tooltipStyle)
+                    val barCenterX = slotLeft + slotWidth / 2f
+                    val tooltipX = (barCenterX - textResult.size.width / 2f)
+                        .coerceIn(chartLeft, chartRight - textResult.size.width)
+                    val tooltipY = (barTop - 8.dp.toPx() - textResult.size.height)
+                        .coerceAtLeast(chartTop)
 
-                        drawCircle(
-                            color = onSurfaceColor,
-                            radius = 8.dp.toPx(),
-                            center = point,
-                            style = Stroke(width = 2f),
-                        )
-
-                        val tooltipText =
-                            "${bucket.rangeLabel}: ${(bucket.actualRate * 100).toInt()}% actual (n=${bucket.count})"
-                        val textResult = textMeasurer.measure(tooltipText, tooltipStyle)
-                        val tooltipX = (point.x - textResult.size.width / 2f)
-                            .coerceIn(chartLeft, chartRight - textResult.size.width)
-                        val tooltipY = point.y - 12.dp.toPx() - textResult.size.height
-
-                        drawRect(
-                            color = surfaceVariantColor,
-                            topLeft = Offset(tooltipX - 4.dp.toPx(), tooltipY - 2.dp.toPx()),
-                            size = Size(
-                                textResult.size.width + 8.dp.toPx(),
-                                textResult.size.height + 4.dp.toPx(),
-                            ),
-                        )
-                        drawText(
-                            textLayoutResult = textResult,
-                            topLeft = Offset(tooltipX, tooltipY),
-                        )
-                    }
+                    drawRect(
+                        color = surfaceVariantColor,
+                        topLeft = Offset(tooltipX - 4.dp.toPx(), tooltipY - 2.dp.toPx()),
+                        size = Size(
+                            textResult.size.width + 8.dp.toPx(),
+                            textResult.size.height + 4.dp.toPx(),
+                        ),
+                    )
+                    drawText(
+                        textLayoutResult = textResult,
+                        topLeft = Offset(tooltipX, tooltipY),
+                    )
                 }
             }
         }

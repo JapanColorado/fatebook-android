@@ -170,6 +170,7 @@ class AnalyticsViewModelTest {
         )
         val forecasts = mapOf(
             "q1" to listOf(forecast("q1", 0.77)),
+            // 0.17 folds to 0.83 -> 80-85% bucket
             "q2" to listOf(forecast("q2", 0.17)),
         )
         val buckets = AnalyticsViewModel.computeCalibrationBuckets(questions, forecasts)
@@ -178,9 +179,58 @@ class AnalyticsViewModelTest {
         assertThat(bucket75).isNotNull()
         assertThat(bucket75!!.count).isEqualTo(1)
 
-        val bucket15 = buckets.find { it.rangeLabel == "15-20%" }
-        assertThat(bucket15).isNotNull()
-        assertThat(bucket15!!.count).isEqualTo(1)
+        val bucket80 = buckets.find { it.rangeLabel == "80-85%" }
+        assertThat(bucket80).isNotNull()
+        assertThat(bucket80!!.count).isEqualTo(1)
+    }
+
+    @Test
+    fun `calibration folding flips the outcome for sub-50 forecasts`() {
+        // 0.2 on a NO question = correctly predicting "80% it won't happen" -> a hit.
+        // 0.2 on a YES question = the unlikely side happened -> a miss.
+        val questions = listOf(
+            TestData.question(id = "qNo", resolved = true, resolution = Resolution.NO),
+            TestData.question(id = "qYes", resolved = true, resolution = Resolution.YES),
+        )
+        val forecasts = mapOf(
+            "qNo" to listOf(forecast("qNo", 0.2)),
+            "qYes" to listOf(forecast("qYes", 0.2)),
+        )
+        val buckets = AnalyticsViewModel.computeCalibrationBuckets(questions, forecasts)
+
+        val bucket80 = buckets.find { it.rangeLabel == "80-85%" }
+        assertThat(bucket80).isNotNull()
+        assertThat(bucket80!!.count).isEqualTo(2)
+        assertThat(bucket80.actualRate).isWithin(0.001f).of(0.5f)
+    }
+
+    @Test
+    fun `calibration keeps exactly-50 forecasts with original orientation`() {
+        val questions = listOf(
+            TestData.question(id = "q1", resolved = true, resolution = Resolution.YES),
+        )
+        val forecasts = mapOf("q1" to listOf(forecast("q1", 0.5)))
+        val buckets = AnalyticsViewModel.computeCalibrationBuckets(questions, forecasts)
+
+        val bucket50 = buckets.find { it.rangeLabel == "50-55%" }
+        assertThat(bucket50).isNotNull()
+        assertThat(bucket50!!.count).isEqualTo(1)
+        assertThat(bucket50.actualRate).isWithin(0.001f).of(1f)
+    }
+
+    @Test
+    fun `calibration folds extreme forecasts into the top bucket`() {
+        // 0.0 folds to 1.0 and must land in 95-100% (inclusive top edge).
+        val questions = listOf(
+            TestData.question(id = "q1", resolved = true, resolution = Resolution.NO),
+        )
+        val forecasts = mapOf("q1" to listOf(forecast("q1", 0.0)))
+        val buckets = AnalyticsViewModel.computeCalibrationBuckets(questions, forecasts)
+
+        val bucket95 = buckets.find { it.rangeLabel == "95-100%" }
+        assertThat(bucket95).isNotNull()
+        assertThat(bucket95!!.count).isEqualTo(1)
+        assertThat(bucket95.actualRate).isWithin(0.001f).of(1f)
     }
 
     @Test

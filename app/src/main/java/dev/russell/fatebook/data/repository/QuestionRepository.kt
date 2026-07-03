@@ -65,9 +65,6 @@ class QuestionRepository @Inject constructor(
         Types.newParameterizedType(List::class.java, String::class.java),
     )
 
-    private val QuestionDto.isBinary: Boolean
-        get() = questionType == null || questionType == "BINARY"
-
     /**
      * Join question entities with their options. Binary questions have no option
      * rows, so for a binary-only cache the joined output is identical on both
@@ -119,10 +116,9 @@ class QuestionRepository @Inject constructor(
     suspend fun refresh(): List<Question> {
         val response = api.getQuestions()
         nextCursor = response.nextCursor
-        val binaryOnly = response.items.filter { it.isBinary }
-        commitDtos(binaryOnly, prune = true)
-        captureDisplayName(binaryOnly)
-        return binaryOnly.map { it.toDomain() }
+        commitDtos(response.items, prune = true)
+        captureDisplayName(response.items)
+        return response.items.map { it.toDomain() }
     }
 
     /** Load the next page and append to cache. Returns true if more pages exist. */
@@ -130,8 +126,7 @@ class QuestionRepository @Inject constructor(
         val cursor = nextCursor ?: return false
         val response = api.getQuestions(cursor = cursor)
         nextCursor = response.nextCursor
-        val binaryOnly = response.items.filter { it.isBinary }
-        commitDtos(binaryOnly, prune = false)
+        commitDtos(response.items, prune = false)
         return response.nextCursor != null
     }
 
@@ -142,7 +137,7 @@ class QuestionRepository @Inject constructor(
         var cursor: Int? = null
         do {
             val response = api.getQuestions(cursor = cursor)
-            collected += response.items.filter { it.isBinary }
+            collected += response.items
             cursor = response.nextCursor
             nextCursor = cursor
         } while (cursor != null)
@@ -236,20 +231,30 @@ class QuestionRepository @Inject constructor(
         return localId
     }
 
-    suspend fun addForecast(questionId: String, forecast: Double) {
+    /**
+     * Add a forecast. For multiple-choice questions pass [optionId]; the
+     * forecast then belongs to that option and never touches the question-level
+     * latest forecast.
+     */
+    suspend fun addForecast(questionId: String, forecast: Double, optionId: String? = null) {
         val nowMs = System.currentTimeMillis()
         transactor.transact {
-            dao.updateLatestForecast(questionId, forecast, nowMs)
+            if (optionId == null) {
+                dao.updateLatestForecast(questionId, forecast, nowMs)
+            } else {
+                optionDao.updateLatestForecast(optionId, forecast, nowMs)
+            }
             forecastDao.upsertAll(
                 listOf(
                     ForecastEntity(
                         questionId = questionId,
                         forecast = forecast,
                         createdAtEpochMs = nowMs,
+                        optionId = optionId,
                     ),
                 ),
             )
-            enqueuer.enqueueAddForecast(questionId, AddForecastPayload(forecast))
+            enqueuer.enqueueAddForecast(questionId, AddForecastPayload(forecast, optionId))
         }
         prefs.setLastPredictionDate(nowMs)
         syncScheduler.schedule()
@@ -259,6 +264,72 @@ class QuestionRepository @Inject constructor(
         transactor.transact {
             dao.updateResolution(questionId, resolution.apiValue, System.currentTimeMillis())
             enqueuer.enqueueResolve(questionId, ResolvePayload(resolution.apiValue))
+        }
+        syncScheduler.schedule()
+    }
+
+    /**
+     * Resolve an exclusive multiple-choice question. [resolution] is the winning
+     * option's TEXT (server matches options by text), or "OTHER" (no listed
+     * option was right — all resolve NO), or "AMBIGUOUS". Locally mirrors the
+     * server: options are marked YES/NO by id, the parent question resolves to
+     * YES (an option won), NO (OTHER), or AMBIGUOUS.
+     */
+    suspend fun resolveMultipleChoice(questionId: String, resolution: String) {
+        val nowMs = System.currentTimeMillis()
+        val options = optionDao.getByQuestionId(questionId)
+        val winner = options.firstOrNull { it.text == resolution }
+        val parentResolution = when {
+            resolution == MC_RESOLUTION_AMBIGUOUS -> Resolution.AMBIGUOUS
+            resolution == MC_RESOLUTION_OTHER -> Resolution.NO
+            else -> Resolution.YES
+        }
+        transactor.transact {
+            if (parentResolution != Resolution.AMBIGUOUS) {
+                for (option in options) {
+                    val optionResolution =
+                        if (option.id == winner?.id) Resolution.YES else Resolution.NO
+                    optionDao.updateResolution(option.id, optionResolution.apiValue, nowMs)
+                }
+            }
+            dao.updateResolution(questionId, parentResolution.apiValue, nowMs)
+            enqueuer.enqueueResolve(
+                questionId,
+                ResolvePayload(
+                    resolution = resolution,
+                    questionType = "MULTIPLE_CHOICE",
+                ),
+            )
+        }
+        syncScheduler.schedule()
+    }
+
+    /**
+     * Resolve a single option of a non-exclusive multiple-choice question.
+     * Mirrors the server: the parent question resolves once every option is
+     * resolved (YES if any option resolved YES, else NO).
+     */
+    suspend fun resolveOption(questionId: String, optionId: String, resolvedYes: Boolean) {
+        val nowMs = System.currentTimeMillis()
+        val resolution = if (resolvedYes) Resolution.YES else Resolution.NO
+        val options = optionDao.getByQuestionId(questionId)
+        val allResolvedAfter = options.all { it.id == optionId || it.resolution != null }
+        val anyYesAfter = resolvedYes ||
+            options.any { it.id != optionId && it.resolution == Resolution.YES.apiValue }
+        transactor.transact {
+            optionDao.updateResolution(optionId, resolution.apiValue, nowMs)
+            if (allResolvedAfter) {
+                val parent = if (anyYesAfter) Resolution.YES else Resolution.NO
+                dao.updateResolution(questionId, parent.apiValue, nowMs)
+            }
+            enqueuer.enqueueResolve(
+                questionId,
+                ResolvePayload(
+                    resolution = resolution.apiValue,
+                    questionType = "MULTIPLE_CHOICE",
+                    optionId = optionId,
+                ),
+            )
         }
         syncScheduler.schedule()
     }
@@ -318,6 +389,18 @@ class QuestionRepository @Inject constructor(
 
     suspend fun getCommentsForQuestion(questionId: String): List<Comment> {
         return commentDao.getByQuestionId(questionId).map { it.toDomain() }
+    }
+
+    suspend fun getForecastsForQuestion(questionId: String): List<Forecast> {
+        return forecastDao.getByQuestionId(questionId).map {
+            Forecast(
+                userId = it.userId ?: "",
+                forecast = it.forecast,
+                createdAt = Instant.ofEpochMilli(it.createdAtEpochMs),
+                userName = it.userName,
+                optionId = it.optionId,
+            )
+        }
     }
 
     suspend fun addComment(questionId: String, comment: String): Comment {
@@ -591,6 +674,12 @@ class QuestionRepository @Inject constructor(
         } catch (_: Exception) {
             emptyList()
         }
+
+    companion object {
+        /** Special MC resolutions understood by the server besides an option's text. */
+        const val MC_RESOLUTION_OTHER = "OTHER"
+        const val MC_RESOLUTION_AMBIGUOUS = "AMBIGUOUS"
+    }
 
     private fun parseInstant(dateStr: String): Instant {
         return try {

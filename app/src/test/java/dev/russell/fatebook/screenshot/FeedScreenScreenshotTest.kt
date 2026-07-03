@@ -2,6 +2,7 @@ package dev.russell.fatebook.screenshot
 
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
+import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
 import dev.russell.fatebook.ui.feed.FeedError
@@ -86,6 +87,26 @@ class FeedScreenScreenshotTest {
                                 title = "Will we colonize Mars by 2030?",
                                 yourLatestForecast = 0.12,
                                 resolveBy = Instant.parse("2030-12-31T00:00:00Z"),
+                            ),
+                            TestData.question(
+                                id = "4",
+                                title = "Which framework will we pick?",
+                                type = QuestionType.MULTIPLE_CHOICE,
+                                yourLatestForecast = null,
+                                latestForecastAt = null,
+                                resolveBy = Instant.parse("2030-12-31T00:00:00Z"),
+                                options = listOf(
+                                    TestData.questionOption(
+                                        id = "o1",
+                                        text = "Compose",
+                                        latestForecast = 0.65,
+                                    ),
+                                    TestData.questionOption(
+                                        id = "o2",
+                                        text = "Flutter",
+                                        latestForecast = 0.25,
+                                    ),
+                                ),
                             ),
                         ),
                         filter = FeedFilter.ACTIVE,

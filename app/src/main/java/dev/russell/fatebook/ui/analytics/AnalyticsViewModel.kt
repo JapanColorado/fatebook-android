@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.russell.fatebook.data.local.ForecastEntity
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Question
+import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -62,12 +63,19 @@ class AnalyticsViewModel @Inject constructor(
 
     companion object {
 
-        /** Pairs each forecast with its question's resolution for scoring. */
+        /**
+         * Pairs each forecast with its question's resolution for scoring.
+         * Binary questions only: a resolved MC question's parent resolution is
+         * YES whenever any option won, and its ForecastEntity rows belong to
+         * options — scoring them here would corrupt Brier/calibration.
+         * (Per-option MC scoring, matching the website, is a follow-up.)
+         */
         private fun scoredPairs(
             resolvedQuestions: List<Question>,
             forecastsByQuestion: Map<String, List<ForecastEntity>>,
         ): List<Pair<Double, Resolution>> {
             return resolvedQuestions
+                .filter { it.type == QuestionType.BINARY }
                 .filter { it.resolution != null && it.resolution != Resolution.AMBIGUOUS }
                 .flatMap { q ->
                     val forecasts = forecastsByQuestion[q.id] ?: emptyList()
@@ -90,6 +98,7 @@ class AnalyticsViewModel @Inject constructor(
             forecastsByQuestion: Map<String, List<ForecastEntity>>,
         ): Double? {
             val scoringQuestions = resolvedQuestions
+                .filter { it.type == QuestionType.BINARY }
                 .filter { it.resolution == Resolution.YES || it.resolution == Resolution.NO }
                 .mapNotNull { q ->
                     val forecasts = forecastsByQuestion[q.id]

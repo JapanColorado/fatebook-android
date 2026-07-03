@@ -2,6 +2,7 @@ package dev.russell.fatebook.ui.detail
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -45,8 +46,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Question
+import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.ui.components.DatePickerField
 import dev.russell.fatebook.ui.components.ProbabilitySlider
@@ -67,6 +70,11 @@ fun QuestionDetailSheet(
     onForecastSliderChange: (Float) -> Unit,
     onUpdateForecast: () -> Unit,
     onResolve: (Resolution) -> Unit,
+    onToggleOptionExpanded: (String) -> Unit = {},
+    onOptionSliderChange: (Float) -> Unit = {},
+    onUpdateOptionForecast: () -> Unit = {},
+    onResolveMcExclusive: (String) -> Unit = {},
+    onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit = { _, _ -> },
     onEnterEditMode: () -> Unit,
     onEditTitleChange: (String) -> Unit,
     onEditResolveByChange: (LocalDate) -> Unit,
@@ -112,6 +120,11 @@ fun QuestionDetailSheet(
                     onForecastSliderChange = onForecastSliderChange,
                     onUpdateForecast = onUpdateForecast,
                     onResolve = onResolve,
+                    onToggleOptionExpanded = onToggleOptionExpanded,
+                    onOptionSliderChange = onOptionSliderChange,
+                    onUpdateOptionForecast = onUpdateOptionForecast,
+                    onResolveMcExclusive = onResolveMcExclusive,
+                    onResolveMcOption = onResolveMcOption,
                     onEnterEditMode = onEnterEditMode,
                     onDeleteClick = onDeleteClick,
                     onToggleSharedPublicly = onToggleSharedPublicly,
@@ -161,6 +174,11 @@ private fun ColumnScope.ReadModeContent(
     onForecastSliderChange: (Float) -> Unit,
     onUpdateForecast: () -> Unit,
     onResolve: (Resolution) -> Unit,
+    onToggleOptionExpanded: (String) -> Unit,
+    onOptionSliderChange: (Float) -> Unit,
+    onUpdateOptionForecast: () -> Unit,
+    onResolveMcExclusive: (String) -> Unit,
+    onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit,
     onEnterEditMode: () -> Unit,
     onDeleteClick: () -> Unit,
     onToggleSharedPublicly: () -> Unit,
@@ -222,10 +240,20 @@ private fun ColumnScope.ReadModeContent(
     // Resolution (if resolved)
     if (question.resolved && question.resolution != null) {
         Spacer(modifier = Modifier.height(8.dp))
-        val (label, color) = when (question.resolution.apiValue) {
-            "YES" -> "Resolved: YES" to ResolveYes
-            "NO" -> "Resolved: NO" to ResolveNo
-            else -> "Resolved: Ambiguous" to ResolveAmbiguous
+        val (label, color) = if (question.type == QuestionType.MULTIPLE_CHOICE) {
+            val winner = question.options.firstOrNull { it.resolution == Resolution.YES }
+            when {
+                question.resolution == Resolution.AMBIGUOUS ->
+                    "Resolved: Ambiguous" to ResolveAmbiguous
+                winner != null -> "Resolved: ${winner.text}" to ResolveYes
+                else -> "Resolved: Other" to ResolveNo
+            }
+        } else {
+            when (question.resolution.apiValue) {
+                "YES" -> "Resolved: YES" to ResolveYes
+                "NO" -> "Resolved: NO" to ResolveNo
+                else -> "Resolved: Ambiguous" to ResolveAmbiguous
+            }
         }
         Text(
             text = label,
@@ -235,8 +263,35 @@ private fun ColumnScope.ReadModeContent(
         )
     }
 
-    // Action section: resolve buttons OR forecast slider
-    if (question.isReadyToResolve) {
+    if (question.type == QuestionType.MULTIPLE_CHOICE) {
+        Spacer(modifier = Modifier.height(16.dp))
+        MultipleChoiceSection(
+            question = question,
+            detailState = detailState,
+            onToggleOptionExpanded = onToggleOptionExpanded,
+            onOptionSliderChange = onOptionSliderChange,
+            onUpdateOptionForecast = onUpdateOptionForecast,
+            onResolveMcExclusive = onResolveMcExclusive,
+            onResolveMcOption = onResolveMcOption,
+        )
+        if (detailState.isResolving) {
+            Spacer(modifier = Modifier.height(12.dp))
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .size(24.dp)
+                    .align(Alignment.CenterHorizontally),
+            )
+        }
+    } else if (question.type == QuestionType.QUANTITY) {
+        if (!question.resolved) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Quantity questions can be forecast and resolved on fatebook.io",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    } else if (question.isReadyToResolve) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Row(
@@ -314,7 +369,7 @@ private fun ColumnScope.ReadModeContent(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        if (!question.resolved) {
+        if (!question.resolved && question.type != QuestionType.QUANTITY) {
             IconButton(onClick = onEnterEditMode) {
                 Icon(Icons.Default.Edit, contentDescription = "Edit question")
             }
@@ -418,6 +473,173 @@ private fun ColumnScope.ReadModeContent(
         }
     }
 
+}
+
+/**
+ * Option list for multiple-choice questions.
+ *
+ * Active question: each unresolved option row is tappable and expands a
+ * probability slider for forecasting that option (one at a time).
+ * Ready to resolve: exclusive questions get one resolve button per option plus
+ * Other/Ambiguous; non-exclusive questions get YES/NO buttons per option.
+ */
+@Composable
+private fun MultipleChoiceSection(
+    question: Question,
+    detailState: DetailSheetState,
+    onToggleOptionExpanded: (String) -> Unit,
+    onOptionSliderChange: (Float) -> Unit,
+    onUpdateOptionForecast: () -> Unit,
+    onResolveMcExclusive: (String) -> Unit,
+    onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit,
+) {
+    val canForecast = !question.resolved && !question.isForecastHidden
+    val showResolveButtons = question.isReadyToResolve
+
+    Text(
+        text = "Options",
+        style = MaterialTheme.typography.titleSmall,
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+
+    question.options.forEach { option ->
+        val expanded = detailState.expandedOptionId == option.id
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (canForecast && !showResolveButtons && option.resolution == null) {
+                        Modifier.clickable { onToggleOptionExpanded(option.id) }
+                    } else {
+                        Modifier
+                    },
+                )
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = option.text,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            when {
+                option.resolution != null -> {
+                    val (label, color) = when (option.resolution) {
+                        Resolution.YES -> "YES" to ResolveYes
+                        Resolution.NO -> "NO" to ResolveNo
+                        Resolution.AMBIGUOUS -> "N/A" to ResolveAmbiguous
+                    }
+                    Text(
+                        text = label,
+                        color = color,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                    )
+                }
+                showResolveButtons && !question.exclusiveAnswers -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = { onResolveMcOption(option.id, true) },
+                            enabled = !detailState.isResolving,
+                        ) {
+                            Text("YES", color = ResolveYes, fontWeight = FontWeight.Bold)
+                        }
+                        TextButton(
+                            onClick = { onResolveMcOption(option.id, false) },
+                            enabled = !detailState.isResolving,
+                        ) {
+                            Text("NO", color = ResolveNo, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                question.isForecastHidden -> {
+                    Text(
+                        text = "Hidden",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                else -> {
+                    Text(
+                        text = option.forecastPercent?.let { "$it%" } ?: "—",
+                        color = option.latestForecast?.let { forecastColor(it) }
+                            ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                    )
+                }
+            }
+        }
+
+        if (expanded && canForecast && !showResolveButtons) {
+            ProbabilitySlider(
+                value = detailState.optionSliderValue,
+                onValueChange = onOptionSliderChange,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onUpdateOptionForecast,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !detailState.isUpdatingForecast,
+            ) {
+                if (detailState.isUpdatingForecast) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.height(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text("Update Forecast")
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+
+    if (showResolveButtons && question.exclusiveAnswers) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "Resolve to the correct answer:",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        question.options.forEach { option ->
+            Button(
+                onClick = { onResolveMcExclusive(option.text) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !detailState.isResolving,
+                colors = ButtonDefaults.buttonColors(containerColor = ResolveYes),
+            ) {
+                Text(option.text, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        OutlinedButton(
+            onClick = { onResolveMcExclusive(QuestionRepository.MC_RESOLUTION_OTHER) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !detailState.isResolving,
+        ) {
+            Text("Other")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { onResolveMcExclusive(QuestionRepository.MC_RESOLUTION_AMBIGUOUS) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !detailState.isResolving,
+        ) {
+            Text("Ambiguous")
+        }
+    } else if (showResolveButtons && !question.exclusiveAnswers) {
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { onResolveMcExclusive(QuestionRepository.MC_RESOLUTION_AMBIGUOUS) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !detailState.isResolving,
+        ) {
+            Text("Resolve all Ambiguous")
+        }
+    }
 }
 
 @Composable

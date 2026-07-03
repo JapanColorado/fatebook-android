@@ -19,11 +19,16 @@ data class CreateQuestionPayload(
 @JsonClass(generateAdapter = true)
 data class AddForecastPayload(
     val forecast: Double,
+    // Required by the API for MULTIPLE_CHOICE questions, forbidden for BINARY.
+    val optionId: String? = null,
 )
 
 @JsonClass(generateAdapter = true)
 data class ResolvePayload(
     val resolution: String,
+    val questionType: String = "BINARY",
+    // Set only when resolving a single option of a non-exclusive MC question.
+    val optionId: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

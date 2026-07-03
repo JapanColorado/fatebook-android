@@ -3,6 +3,7 @@ package dev.russell.fatebook.ui.feed
 import com.google.common.truth.Truth.assertThat
 import dev.russell.fatebook.data.network.NetworkMonitor
 import dev.russell.fatebook.data.repository.QuestionRepository
+import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
 import io.mockk.coEvery
@@ -547,5 +548,92 @@ class FeedViewModelTest {
         val error = vm.uiState.value.error
         assertThat(error).isInstanceOf(FeedError.Other::class.java)
         assertThat(error?.message).contains("500")
+    }
+
+    // --- multiple choice ---
+
+    private fun mcQuestion() = TestData.question(
+        id = "mc1",
+        type = QuestionType.MULTIPLE_CHOICE,
+        yourLatestForecast = null,
+        options = listOf(
+            TestData.questionOption(id = "optA", text = "Alpha", latestForecast = 0.4),
+            TestData.questionOption(id = "optB", text = "Beta", latestForecast = null),
+        ),
+    )
+
+    @Test
+    fun `toggleOptionExpanded seeds slider with the option's current forecast`() = runTest {
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(mcQuestion())
+        advanceUntilIdle()
+        vm.toggleOptionExpanded("optA")
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.detail.expandedOptionId).isEqualTo("optA")
+        assertThat(vm.uiState.value.detail.optionSliderValue).isEqualTo(0.4f)
+
+        // Tapping again collapses.
+        vm.toggleOptionExpanded("optA")
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.detail.expandedOptionId).isNull()
+    }
+
+    @Test
+    fun `updateOptionForecast forwards optionId to the repository and closes sheet`() = runTest {
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(mcQuestion())
+        advanceUntilIdle()
+        vm.toggleOptionExpanded("optB")
+        vm.setOptionSliderValue(0.75f)
+        advanceUntilIdle()
+        vm.updateOptionForecast()
+        advanceUntilIdle()
+
+        coVerify { repository.addForecast("mc1", 0.75, "optB") }
+        assertThat(vm.uiState.value.detail.question).isNull()
+    }
+
+    @Test
+    fun `resolveMcExclusive forwards the resolution text`() = runTest {
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(mcQuestion())
+        advanceUntilIdle()
+        vm.resolveMcExclusive("Beta")
+        advanceUntilIdle()
+
+        coVerify { repository.resolveMultipleChoice("mc1", "Beta") }
+        assertThat(vm.uiState.value.detail.question).isNull()
+    }
+
+    @Test
+    fun `resolveMcOption forwards option and verdict`() = runTest {
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(mcQuestion())
+        advanceUntilIdle()
+        vm.resolveMcOption("optA", resolvedYes = false)
+        advanceUntilIdle()
+
+        coVerify { repository.resolveOption("mc1", "optA", false) }
     }
 }

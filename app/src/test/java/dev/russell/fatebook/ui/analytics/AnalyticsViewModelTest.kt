@@ -3,6 +3,7 @@ package dev.russell.fatebook.ui.analytics
 import com.google.common.truth.Truth.assertThat
 import dev.russell.fatebook.data.local.ForecastEntity
 import dev.russell.fatebook.data.repository.QuestionRepository
+import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
 import io.mockk.coVerify
@@ -152,6 +153,26 @@ class AnalyticsViewModelTest {
         val forecasts = mapOf("q1" to listOf(forecast("q1", 0.8)))
         val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
         assertThat(score).isWithin(0.0001).of(0.08)
+    }
+
+    @Test
+    fun `brier score excludes multiple-choice and quantity questions`() {
+        // The MC parent resolves YES whenever an option won, and its forecast
+        // rows belong to options — scoring them would corrupt the Brier score.
+        val mc = resolvedQuestion("mc1", Resolution.YES).copy(type = QuestionType.MULTIPLE_CHOICE)
+        val quantity = resolvedQuestion("qt1", Resolution.YES).copy(type = QuestionType.QUANTITY)
+        val forecasts = mapOf(
+            "mc1" to listOf(forecast("mc1", 0.9)),
+            "qt1" to listOf(forecast("qt1", 0.9)),
+        )
+
+        assertThat(AnalyticsViewModel.computeBrierScore(listOf(mc, quantity), forecasts)).isNull()
+        assertThat(
+            AnalyticsViewModel.computeCalibrationBuckets(listOf(mc, quantity), forecasts),
+        ).isEmpty()
+        assertThat(
+            AnalyticsViewModel.countScoredForecasts(listOf(mc, quantity), forecasts),
+        ).isEqualTo(0)
     }
 
     @Test

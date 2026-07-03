@@ -20,12 +20,27 @@ class FakeFatebookApi : FatebookApi {
 
     val getQuestionsCalls = mutableListOf<Int?>()
     val createQuestionCalls = mutableListOf<Triple<String, String, Double>>()
-    val resolveQuestionCalls = mutableListOf<Triple<String, String, String>>()
-    val addForecastCalls = mutableListOf<Triple<String, Double, String>>()
+    val resolveQuestionCalls = mutableListOf<ResolveQuestionCall>()
+    val addForecastCalls = mutableListOf<AddForecastCall>()
     val editQuestionCalls = mutableListOf<EditQuestionCall>()
     val deleteQuestionCalls = mutableListOf<String>()
     val addCommentCalls = mutableListOf<Pair<String, String>>()
     val setSharedPubliclyCalls = mutableListOf<SetSharedPubliclyCall>()
+
+    data class ResolveQuestionCall(
+        val questionId: String,
+        val resolution: String,
+        val apiKey: String,
+        val questionType: String,
+        val optionId: String?,
+    )
+
+    data class AddForecastCall(
+        val questionId: String,
+        val forecast: Double,
+        val apiKey: String,
+        val optionId: String?,
+    )
 
     data class EditQuestionCall(
         val questionId: String,
@@ -68,18 +83,22 @@ class FakeFatebookApi : FatebookApi {
         resolution: String,
         apiKey: String,
         questionType: String,
+        optionId: String?,
     ) {
         resolveQuestionError?.let { throw it }
-        resolveQuestionCalls.add(Triple(questionId, resolution, apiKey))
+        resolveQuestionCalls.add(
+            ResolveQuestionCall(questionId, resolution, apiKey, questionType, optionId),
+        )
     }
 
     override suspend fun addForecast(
         questionId: String,
         forecast: Double,
         apiKey: String,
+        optionId: String?,
     ) {
         addForecastError?.let { throw it }
-        addForecastCalls.add(Triple(questionId, forecast, apiKey))
+        addForecastCalls.add(AddForecastCall(questionId, forecast, apiKey, optionId))
     }
 
     override suspend fun validateApiKey(limit: Int): QuestionsResponseDto {

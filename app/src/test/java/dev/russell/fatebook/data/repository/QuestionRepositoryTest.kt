@@ -215,16 +215,18 @@ class QuestionRepositoryTest {
     // --- questionType filtering ---
 
     @Test
-    fun `refresh filters out multi-option questions`() = runTest {
+    fun `refresh keeps multiple-choice and quantity questions`() = runTest {
         val binary = TestData.questionDto(id = "q1", questionType = "BINARY")
-        val multi = TestData.questionDto(id = "q2", questionType = "MULTI_OPTION")
-        val binary2 = TestData.questionDto(id = "q3", questionType = "BINARY")
-        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(binary, multi, binary2)) }
+        val multi = TestData.questionDto(id = "q2", questionType = "MULTIPLE_CHOICE")
+        val quantity = TestData.questionDto(id = "q3", questionType = "QUANTITY")
+        api.getQuestionsResponse = {
+            TestData.questionsResponse(items = listOf(binary, multi, quantity))
+        }
 
         val result = repository.refresh()
 
-        assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q3")
-        assertThat(result.map { it.id }).containsExactly("q1", "q3")
+        assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2", "q3")
+        assertThat(result.map { it.id }).containsExactly("q1", "q2", "q3")
     }
 
     @Test
@@ -659,11 +661,9 @@ class QuestionRepositoryTest {
 
     @Test
     fun `option latest forecast is derived from question-level forecasts by optionId`() = runTest {
-        // Binary-only filter still in place: mark as BINARY but include options —
-        // exercises the mapper independent of the (temporary) type filter.
         val dto = TestData.questionDto(
             id = "q1",
-            questionType = "BINARY",
+            questionType = "MULTIPLE_CHOICE",
             options = listOf(
                 TestData.optionDto(id = "optA", text = "A"),
                 TestData.optionDto(id = "optB", text = "B"),
@@ -688,7 +688,7 @@ class QuestionRepositoryTest {
     fun `option-only forecasts do not become the question-level latest forecast`() = runTest {
         val dto = TestData.questionDto(
             id = "q1",
-            questionType = "BINARY",
+            questionType = "MULTIPLE_CHOICE",
             forecasts = listOf(
                 ForecastDto("u1", 0.7, "2020-01-02T00:00:00Z", null, null, null),
                 ForecastDto("u1", 0.99, "2020-01-05T00:00:00Z", null, null, "optA"),
@@ -723,7 +723,7 @@ class QuestionRepositoryTest {
         optionDao.upsertAll(listOf(TestData.optionEntity(id = "stale", questionId = "q1")))
         val dto = TestData.questionDto(
             id = "q1",
-            questionType = "BINARY",
+            questionType = "MULTIPLE_CHOICE",
             options = listOf(TestData.optionDto(id = "fresh", text = "Fresh")),
         )
         api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto)) }
@@ -731,5 +731,112 @@ class QuestionRepositoryTest {
         repository.refresh()
 
         assertThat(optionDao.storedOptions.map { it.id }).containsExactly("fresh")
+    }
+
+    // --- multiple-choice mutations ---
+
+    @Test
+    fun `addForecast with optionId updates the option, not the question`() = runTest {
+        dao.upsertAll(
+            listOf(
+                TestData.questionEntity(
+                    id = "q1",
+                    questionType = "MULTIPLE_CHOICE",
+                    latestForecast = null,
+                    latestForecastAtEpochMs = null,
+                ),
+            ),
+        )
+        optionDao.upsertAll(
+            listOf(TestData.optionEntity(id = "optA", questionId = "q1", latestForecast = 0.4)),
+        )
+
+        repository.addForecast("q1", 0.8, optionId = "optA")
+
+        assertThat(optionDao.storedOptions.single().latestForecast).isEqualTo(0.8)
+        assertThat(dao.storedQuestions.single().latestForecast).isNull()
+        val forecast = forecastDao.storedForecasts.single()
+        assertThat(forecast.optionId).isEqualTo("optA")
+        val mutation = pendingDao.stored.single()
+        assertThat(mutation.type).isEqualTo(PendingMutationEntity.TYPE_ADD_FORECAST)
+        assertThat(enqueuer.decodeForecast(mutation.payloadJson).optionId).isEqualTo("optA")
+    }
+
+    @Test
+    fun `resolveMultipleChoice to an option marks winner YES and others NO`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1", questionType = "MULTIPLE_CHOICE")))
+        optionDao.upsertAll(
+            listOf(
+                TestData.optionEntity(id = "optA", questionId = "q1", text = "Alpha"),
+                TestData.optionEntity(id = "optB", questionId = "q1", text = "Beta"),
+            ),
+        )
+
+        repository.resolveMultipleChoice("q1", "Beta")
+
+        val optionA = optionDao.storedOptions.single { it.id == "optA" }
+        val optionB = optionDao.storedOptions.single { it.id == "optB" }
+        assertThat(optionA.resolution).isEqualTo("NO")
+        assertThat(optionB.resolution).isEqualTo("YES")
+        val question = dao.storedQuestions.single()
+        assertThat(question.resolved).isTrue()
+        assertThat(question.resolution).isEqualTo("YES")
+        val payload = enqueuer.decodeResolve(pendingDao.stored.single().payloadJson)
+        assertThat(payload.resolution).isEqualTo("Beta")
+        assertThat(payload.questionType).isEqualTo("MULTIPLE_CHOICE")
+        assertThat(payload.optionId).isNull()
+    }
+
+    @Test
+    fun `resolveMultipleChoice OTHER marks all options NO and question NO`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1", questionType = "MULTIPLE_CHOICE")))
+        optionDao.upsertAll(
+            listOf(
+                TestData.optionEntity(id = "optA", questionId = "q1", text = "Alpha"),
+                TestData.optionEntity(id = "optB", questionId = "q1", text = "Beta"),
+            ),
+        )
+
+        repository.resolveMultipleChoice("q1", QuestionRepository.MC_RESOLUTION_OTHER)
+
+        assertThat(optionDao.storedOptions.map { it.resolution }).containsExactly("NO", "NO")
+        assertThat(dao.storedQuestions.single().resolution).isEqualTo("NO")
+    }
+
+    @Test
+    fun `resolveMultipleChoice AMBIGUOUS leaves options unresolved`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1", questionType = "MULTIPLE_CHOICE")))
+        optionDao.upsertAll(
+            listOf(TestData.optionEntity(id = "optA", questionId = "q1", text = "Alpha")),
+        )
+
+        repository.resolveMultipleChoice("q1", QuestionRepository.MC_RESOLUTION_AMBIGUOUS)
+
+        assertThat(optionDao.storedOptions.single().resolution).isNull()
+        assertThat(dao.storedQuestions.single().resolution).isEqualTo("AMBIGUOUS")
+    }
+
+    @Test
+    fun `resolveOption resolves the parent once all options are resolved`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1", questionType = "MULTIPLE_CHOICE")))
+        optionDao.upsertAll(
+            listOf(
+                TestData.optionEntity(id = "optA", questionId = "q1"),
+                TestData.optionEntity(id = "optB", questionId = "q1"),
+            ),
+        )
+
+        repository.resolveOption("q1", "optA", resolvedYes = true)
+        // Only one option resolved so far — parent must stay open.
+        assertThat(dao.storedQuestions.single().resolved).isFalse()
+
+        repository.resolveOption("q1", "optB", resolvedYes = false)
+
+        val question = dao.storedQuestions.single()
+        assertThat(question.resolved).isTrue()
+        assertThat(question.resolution).isEqualTo("YES")
+        val payloads = pendingDao.stored.map { enqueuer.decodeResolve(it.payloadJson) }
+        assertThat(payloads.map { it.optionId }).containsExactly("optA", "optB")
+        assertThat(payloads.map { it.resolution }).containsExactly("YES", "NO")
     }
 }

@@ -39,7 +39,12 @@ interface FatebookApi {
         @Query("forecast") forecast: Double,
     ): String
 
-    /** Resolves a question with YES / NO / AMBIGUOUS. */
+    /**
+     * Resolves a question. Binary: resolution is YES / NO / AMBIGUOUS.
+     * Multiple choice: resolution is the winning option's TEXT, or OTHER
+     * (all options NO), or AMBIGUOUS; optionId + YES/NO instead resolves a
+     * single option of a non-exclusive question. Retrofit omits null fields.
+     */
     @FormUrlEncoded
     @POST("resolveQuestion")
     suspend fun resolveQuestion(
@@ -47,15 +52,20 @@ interface FatebookApi {
         @Field("resolution") resolution: String,
         @Field("apiKey") apiKey: String,
         @Field("questionType") questionType: String = "BINARY",
+        @Field("optionId") optionId: String? = null,
     )
 
-    /** Adds or updates a forecast on a question. */
+    /**
+     * Adds or updates a forecast. optionId is required for MULTIPLE_CHOICE
+     * questions and must be absent for BINARY (the server 400s otherwise).
+     */
     @FormUrlEncoded
     @POST("addForecast")
     suspend fun addForecast(
         @Field("questionId") questionId: String,
         @Field("forecast") forecast: Double,
         @Field("apiKey") apiKey: String,
+        @Field("optionId") optionId: String? = null,
     )
 
     /** Validation call — fetches 1 question to confirm the API key works. */

@@ -99,8 +99,8 @@ class SyncRunnerTest {
         runner.run()
 
         assertThat(api.addForecastCalls).hasSize(1)
-        assertThat(api.addForecastCalls[0].first).isEqualTo("q1")
-        assertThat(api.addForecastCalls[0].second).isEqualTo(0.7)
+        assertThat(api.addForecastCalls[0].questionId).isEqualTo("q1")
+        assertThat(api.addForecastCalls[0].forecast).isEqualTo(0.7)
         assertThat(pendingDao.stored).isEmpty()
     }
 
@@ -181,7 +181,7 @@ class SyncRunnerTest {
         assertThat(questionDao.storedQuestions.map { it.id }).contains("cm123abc456def")
         // Follow-up forecast went to the *real* id, not the temp id
         assertThat(api.addForecastCalls).hasSize(1)
-        assertThat(api.addForecastCalls[0].first).isEqualTo("cm123abc456def")
+        assertThat(api.addForecastCalls[0].questionId).isEqualTo("cm123abc456def")
     }
 
     @Test
@@ -307,6 +307,58 @@ class SyncRunnerTest {
         runner.run()
 
         assertThat(api.resolveQuestionCalls).hasSize(1)
-        assertThat(api.resolveQuestionCalls[0].second).isEqualTo("YES")
+        assertThat(api.resolveQuestionCalls[0].resolution).isEqualTo("YES")
+        assertThat(api.resolveQuestionCalls[0].questionType).isEqualTo("BINARY")
+        assertThat(api.resolveQuestionCalls[0].optionId).isNull()
+    }
+
+    @Test
+    fun `MC RESOLVE sends questionType and resolution text to the API`() = runTest {
+        questionDao.upsertAll(
+            listOf(TestData.questionEntity(id = "q1", questionType = "MULTIPLE_CHOICE")),
+        )
+        repository.resolveMultipleChoice("q1", "Beta")
+
+        runner.run()
+
+        val call = api.resolveQuestionCalls.single()
+        assertThat(call.resolution).isEqualTo("Beta")
+        assertThat(call.questionType).isEqualTo("MULTIPLE_CHOICE")
+        assertThat(call.optionId).isNull()
+    }
+
+    @Test
+    fun `MC ADD_FORECAST sends optionId to the API`() = runTest {
+        questionDao.upsertAll(
+            listOf(TestData.questionEntity(id = "q1", questionType = "MULTIPLE_CHOICE")),
+        )
+        repository.addForecast("q1", 0.6, optionId = "optA")
+
+        runner.run()
+
+        val call = api.addForecastCalls.single()
+        assertThat(call.forecast).isEqualTo(0.6)
+        assertThat(call.optionId).isEqualTo("optA")
+    }
+
+    @Test
+    fun `pre-v11 queued payload JSON without new fields still decodes and drains`() = runTest {
+        // Rows enqueued before questionType/optionId existed must keep working.
+        pendingDao.insert(
+            PendingMutationEntity(
+                type = PendingMutationEntity.TYPE_RESOLVE,
+                questionLocalId = "q1",
+                payloadJson = "{\"resolution\":\"NO\"}",
+                createdAtEpochMs = 0,
+            ),
+        )
+
+        runner.run()
+
+        val call = api.resolveQuestionCalls.single()
+        assertThat(call.resolution).isEqualTo("NO")
+        assertThat(call.questionType).isEqualTo("BINARY")
+        assertThat(call.optionId).isNull()
+        assertThat(pendingDao.stored).isEmpty()
     }
 }

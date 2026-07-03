@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.russell.fatebook.domain.model.Question
+import dev.russell.fatebook.domain.model.QuestionType
+import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.ui.theme.ResolveAmbiguous
 import dev.russell.fatebook.ui.theme.ResolveNo
 import dev.russell.fatebook.ui.theme.ResolveYes
@@ -80,7 +83,16 @@ fun QuestionCard(
                 horizontalAlignment = Alignment.End,
                 modifier = Modifier.padding(start = 12.dp),
             ) {
-                if (question.resolved && question.resolution != null) {
+                if (question.type == QuestionType.QUANTITY) {
+                    Text(
+                        text = "Quantity",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                    )
+                } else if (question.type == QuestionType.MULTIPLE_CHOICE) {
+                    MultipleChoiceSummary(question)
+                } else if (question.resolved && question.resolution != null) {
                     val (text, color) = when (question.resolution.apiValue) {
                         "YES" -> "YES" to ResolveYes
                         "NO" -> "NO" to ResolveNo
@@ -119,6 +131,53 @@ fun QuestionCard(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Right-column summary for a multiple-choice card: the winning option when
+ * resolved, otherwise the option currently forecast highest.
+ */
+@Composable
+private fun MultipleChoiceSummary(question: Question) {
+    if (question.resolved) {
+        val winner = question.options.firstOrNull { it.resolution == Resolution.YES }
+        Text(
+            text = winner?.text ?: "N/A",
+            color = if (winner != null) ResolveYes else ResolveAmbiguous,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 140.dp),
+        )
+    } else {
+        val top = question.options
+            .filter { it.latestForecast != null }
+            .maxByOrNull { it.latestForecast!! }
+        if (top?.forecastPercent != null) {
+            Text(
+                text = "${top.forecastPercent}%",
+                color = forecastColor(top.latestForecast!!),
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+            )
+            Text(
+                text = top.text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 140.dp),
+            )
+        } else {
+            Text(
+                text = "${question.options.size} options",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+            )
         }
     }
 }

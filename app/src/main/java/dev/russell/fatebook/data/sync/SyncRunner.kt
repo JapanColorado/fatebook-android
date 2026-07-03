@@ -50,12 +50,18 @@ class SyncRunner @Inject constructor(
                         syncCreate(next)
                     PendingMutationEntity.TYPE_ADD_FORECAST -> {
                         val payload = enqueuer.decodeForecast(next.payloadJson)
-                        api.addForecast(questionId, payload.forecast, apiKey)
+                        api.addForecast(questionId, payload.forecast, apiKey, payload.optionId)
                         dao.delete(next.id)
                     }
                     PendingMutationEntity.TYPE_RESOLVE -> {
                         val payload = enqueuer.decodeResolve(next.payloadJson)
-                        api.resolveQuestion(questionId, payload.resolution, apiKey)
+                        api.resolveQuestion(
+                            questionId = questionId,
+                            resolution = payload.resolution,
+                            apiKey = apiKey,
+                            questionType = payload.questionType,
+                            optionId = payload.optionId,
+                        )
                         dao.delete(next.id)
                     }
                     PendingMutationEntity.TYPE_EDIT -> {

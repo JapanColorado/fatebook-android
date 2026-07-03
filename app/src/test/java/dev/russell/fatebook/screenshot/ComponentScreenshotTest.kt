@@ -2,6 +2,7 @@ package dev.russell.fatebook.screenshot
 
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
+import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
 import dev.russell.fatebook.ui.components.ErrorBanner
@@ -65,6 +66,77 @@ class ComponentScreenshotTest {
                         title = "Will I finish this book by Friday?",
                         yourLatestForecast = 0.50,
                         resolveBy = Instant.parse("2030-06-15T00:00:00Z"),
+                    ),
+                    onClick = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun questionCard_multipleChoice_active() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                QuestionCard(
+                    question = TestData.question(
+                        title = "Which framework will we pick?",
+                        type = QuestionType.MULTIPLE_CHOICE,
+                        yourLatestForecast = null,
+                        latestForecastAt = null,
+                        resolveBy = Instant.parse("2030-12-31T00:00:00Z"),
+                        options = listOf(
+                            TestData.questionOption(id = "o1", text = "Compose", latestForecast = 0.65),
+                            TestData.questionOption(id = "o2", text = "Flutter", latestForecast = 0.25),
+                        ),
+                    ),
+                    onClick = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun questionCard_multipleChoice_resolved() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                QuestionCard(
+                    question = TestData.question(
+                        title = "Which framework did we pick?",
+                        type = QuestionType.MULTIPLE_CHOICE,
+                        resolved = true,
+                        resolution = Resolution.YES,
+                        yourLatestForecast = null,
+                        latestForecastAt = null,
+                        options = listOf(
+                            TestData.questionOption(
+                                id = "o1",
+                                text = "Compose",
+                                resolution = Resolution.YES,
+                            ),
+                            TestData.questionOption(
+                                id = "o2",
+                                text = "Flutter",
+                                resolution = Resolution.NO,
+                            ),
+                        ),
+                    ),
+                    onClick = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun questionCard_quantity() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                QuestionCard(
+                    question = TestData.question(
+                        title = "How many books will I read this year?",
+                        type = QuestionType.QUANTITY,
+                        yourLatestForecast = null,
+                        latestForecastAt = null,
+                        resolveBy = Instant.parse("2030-12-31T00:00:00Z"),
                     ),
                     onClick = {},
                 )

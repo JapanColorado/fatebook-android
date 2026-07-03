@@ -40,6 +40,9 @@ data class DetailSheetState(
     val question: Question? = null,
     val forecastSliderValue: Float = 0.5f,
     val isUpdatingForecast: Boolean = false,
+    // Multiple choice: which option row is expanded for forecasting, if any.
+    val expandedOptionId: String? = null,
+    val optionSliderValue: Float = 0.5f,
     val isEditing: Boolean = false,
     val editTitle: String = "",
     val editResolveBy: LocalDate? = null,
@@ -347,6 +350,78 @@ class FeedViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to update sharing")
+            }
+        }
+    }
+
+    // --- Multiple choice ---
+
+    fun toggleOptionExpanded(optionId: String) {
+        _detail.update { state ->
+            if (state.expandedOptionId == optionId) {
+                state.copy(expandedOptionId = null)
+            } else {
+                val current = state.question?.options
+                    ?.firstOrNull { it.id == optionId }
+                    ?.latestForecast
+                state.copy(
+                    expandedOptionId = optionId,
+                    optionSliderValue = current?.toFloat() ?: 0.5f,
+                )
+            }
+        }
+    }
+
+    fun setOptionSliderValue(value: Float) {
+        _detail.update { it.copy(optionSliderValue = value) }
+    }
+
+    fun updateOptionForecast() {
+        val state = _detail.value
+        val question = state.question ?: return
+        val optionId = state.expandedOptionId ?: return
+        viewModelScope.launch {
+            _detail.update { it.copy(isUpdatingForecast = true) }
+            try {
+                repository.addForecast(question.id, state.optionSliderValue.toDouble(), optionId)
+                _detail.value = DetailSheetState()
+            } catch (e: Exception) {
+                _error.value = classifyError(e, "Failed to update forecast")
+                _detail.update { it.copy(isUpdatingForecast = false) }
+            }
+        }
+    }
+
+    /**
+     * Resolve an exclusive multiple-choice question to an option's text,
+     * [QuestionRepository.MC_RESOLUTION_OTHER], or
+     * [QuestionRepository.MC_RESOLUTION_AMBIGUOUS].
+     */
+    fun resolveMcExclusive(resolution: String) {
+        val question = _detail.value.question ?: return
+        viewModelScope.launch {
+            _detail.update { it.copy(isResolving = true) }
+            try {
+                repository.resolveMultipleChoice(question.id, resolution)
+                _detail.value = DetailSheetState()
+            } catch (e: Exception) {
+                _error.value = classifyError(e, "Failed to resolve question")
+                _detail.update { it.copy(isResolving = false) }
+            }
+        }
+    }
+
+    /** Resolve one option of a non-exclusive multiple-choice question. */
+    fun resolveMcOption(optionId: String, resolvedYes: Boolean) {
+        val question = _detail.value.question ?: return
+        viewModelScope.launch {
+            _detail.update { it.copy(isResolving = true) }
+            try {
+                repository.resolveOption(question.id, optionId, resolvedYes)
+                _detail.value = DetailSheetState()
+            } catch (e: Exception) {
+                _error.value = classifyError(e, "Failed to resolve option")
+                _detail.update { it.copy(isResolving = false) }
             }
         }
     }

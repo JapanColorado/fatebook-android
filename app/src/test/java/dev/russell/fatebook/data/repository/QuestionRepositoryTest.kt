@@ -807,6 +807,18 @@ class QuestionRepositoryTest {
     }
 
     @Test
+    fun `getQuestion joins options for a single cached question`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1", questionType = "MULTIPLE_CHOICE")))
+        optionDao.upsertAll(listOf(TestData.optionEntity(id = "optA", questionId = "q1")))
+
+        val question = repository.getQuestion("q1")
+
+        assertThat(question?.type).isEqualTo(QuestionType.MULTIPLE_CHOICE)
+        assertThat(question?.options?.map { it.id }).containsExactly("optA")
+        assertThat(repository.getQuestion("missing")).isNull()
+    }
+
+    @Test
     fun `getForecastsForQuestion returns domain forecasts with user metadata`() = runTest {
         forecastDao.upsertAll(
             listOf(

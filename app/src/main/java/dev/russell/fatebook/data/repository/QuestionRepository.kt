@@ -97,6 +97,15 @@ class QuestionRepository @Inject constructor(
         return dao.countReadyToResolve(todayUtcMs)
     }
 
+    suspend fun getReadyToResolve(): List<Question> =
+        observeReadyToResolve().first()
+
+    /** One question by id, with its options joined — null if not cached. */
+    suspend fun getQuestion(questionId: String): Question? {
+        val entity = dao.getById(questionId) ?: return null
+        return entity.toDomain(optionDao.getByQuestionId(questionId))
+    }
+
     fun observeResolved(): Flow<List<Question>> =
         dao.observeResolved().joinOptions()
 

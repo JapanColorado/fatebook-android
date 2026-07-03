@@ -17,6 +17,7 @@ fun FatebookNavGraph(
     userPreferences: UserPreferences,
     openCreate: Boolean = false,
     openResolveFilter: Boolean = false,
+    openQuestionId: String? = null,
 ) {
     val navController = rememberNavController()
     val startDestination = if (userPreferences.hasApiKey) Routes.FEED else Routes.SETTINGS
@@ -34,6 +35,7 @@ fun FatebookNavGraph(
                 onSettingsClick = { navController.navigate(Routes.SETTINGS) },
                 onAnalyticsClick = { navController.navigate(Routes.ANALYTICS) },
                 initialFilter = if (openResolveFilter) FeedFilter.READY_TO_RESOLVE else null,
+                initialQuestionId = openQuestionId,
             )
         }
 

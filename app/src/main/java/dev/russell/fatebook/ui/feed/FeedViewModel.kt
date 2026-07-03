@@ -274,6 +274,13 @@ class FeedViewModel @Inject constructor(
         _detail.value = DetailSheetState()
     }
 
+    /** Open the detail sheet for a cached question by id (notification taps). */
+    fun openQuestionById(questionId: String) {
+        viewModelScope.launch {
+            repository.getQuestion(questionId)?.let { showDetailSheet(it) }
+        }
+    }
+
     fun setForecastSliderValue(value: Float) {
         _detail.update { it.copy(forecastSliderValue = value) }
     }

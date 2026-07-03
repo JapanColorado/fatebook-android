@@ -25,6 +25,11 @@
             </intent-filter>
         </activity>
 
+        <!-- YES/NO actions on ready-to-resolve notifications -->
+        <receiver
+            android:name=".notification.ResolveActionReceiver"
+            android:exported="false" />
+
         <!-- Disable default WorkManager initializer (Hilt provides its own) -->
         <provider
             android:name="androidx.startup.InitializationProvider"

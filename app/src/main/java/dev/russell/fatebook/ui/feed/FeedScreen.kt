@@ -68,6 +68,7 @@ fun FeedScreen(
     onSettingsClick: () -> Unit,
     onAnalyticsClick: () -> Unit,
     initialFilter: FeedFilter? = null,
+    initialQuestionId: String? = null,
     viewModel: FeedViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -76,6 +77,13 @@ fun FeedScreen(
     LaunchedEffect(initialFilter) {
         if (initialFilter != null) {
             viewModel.setFilter(initialFilter)
+        }
+    }
+
+    // A per-question notification tap opens that question's detail sheet
+    LaunchedEffect(initialQuestionId) {
+        if (initialQuestionId != null) {
+            viewModel.openQuestionById(initialQuestionId)
         }
     }
 

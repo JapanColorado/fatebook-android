@@ -24,12 +24,14 @@ class MainActivity : ComponentActivity() {
         val openResolveFilter = intent.getBooleanExtra(
             NotificationHelper.EXTRA_OPEN_RESOLVE_FILTER, false,
         )
+        val openQuestionId = intent.getStringExtra(NotificationHelper.EXTRA_QUESTION_ID)
         setContent {
             FatebookTheme {
                 FatebookNavGraph(
                     userPreferences = userPreferences,
                     openCreate = openCreate,
                     openResolveFilter = openResolveFilter,
+                    openQuestionId = openQuestionId,
                 )
             }
         }

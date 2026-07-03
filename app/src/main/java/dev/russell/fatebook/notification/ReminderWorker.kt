@@ -19,9 +19,9 @@ class ReminderWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         notificationHelper.showReminderNotification(applicationContext)
 
-        val resolveCount = questionRepository.countReadyToResolve()
-        if (resolveCount > 0) {
-            notificationHelper.showReadyToResolveNotification(applicationContext, resolveCount)
+        val readyToResolve = questionRepository.getReadyToResolve()
+        if (readyToResolve.isNotEmpty()) {
+            notificationHelper.showReadyToResolveNotifications(applicationContext, readyToResolve)
         }
 
         return Result.success()

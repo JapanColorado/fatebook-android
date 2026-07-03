@@ -586,6 +586,39 @@ class FeedViewModelTest {
         assertThat(vm.uiState.value.questions.map { it.id }).containsExactly("q1", "q2")
     }
 
+    @Test
+    fun `openQuestionById opens the detail sheet for a cached question`() = runTest {
+        val question = TestData.question(id = "q1")
+        coEvery { repository.getQuestion("q1") } returns question
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.openQuestionById("q1")
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.detail.question?.id).isEqualTo("q1")
+    }
+
+    @Test
+    fun `openQuestionById is a no-op for unknown ids`() = runTest {
+        coEvery { repository.getQuestion("nope") } returns null
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.openQuestionById("nope")
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.detail.question).isNull()
+    }
+
     // --- forecast history + push resolve date ---
 
     @Test

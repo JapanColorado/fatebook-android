@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.russell.fatebook.data.local.PendingMutationEntity
 import dev.russell.fatebook.data.network.NetworkMonitor
+import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Question
@@ -27,6 +28,20 @@ import java.time.LocalDate
 import javax.inject.Inject
 
 enum class FeedFilter { ACTIVE, READY_TO_RESOLVE, RESOLVED }
+
+enum class FeedSort {
+    /** Soonest resolve-by date first (resolved filter shows newest first). */
+    RESOLVE_BY,
+
+    /** Most recently created first. */
+    CREATED_NEWEST,
+    ;
+
+    companion object {
+        fun fromName(name: String): FeedSort =
+            entries.firstOrNull { it.name == name } ?: RESOLVE_BY
+    }
+}
 
 sealed interface FeedError {
     val message: String
@@ -72,6 +87,7 @@ data class FeedUiState(
     val searchQuery: String = "",
     val selectedTag: String? = null,
     val availableTags: List<String> = emptyList(),
+    val sort: FeedSort = FeedSort.RESOLVE_BY,
     val isInitialLoad: Boolean = true,
     val hasMore: Boolean = false,
     val isLoadingMore: Boolean = false,
@@ -84,6 +100,7 @@ data class FeedUiState(
 class FeedViewModel @Inject constructor(
     private val repository: QuestionRepository,
     networkMonitor: NetworkMonitor,
+    private val prefs: UserPreferences,
 ) : ViewModel() {
 
     private var retryCount = 0
@@ -104,6 +121,8 @@ class FeedViewModel @Inject constructor(
     private val syncErrors: Flow<List<SyncErrorEntry>> = repository.observeErroredMutations()
         .map { rows -> rows.map { it.toUi() } }
 
+    private val sort: Flow<FeedSort> = prefs.feedSort.map { FeedSort.fromName(it) }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     private val questionsFlow: Flow<List<Question>> = _filter
         .flatMapLatest { filter ->
@@ -121,6 +140,14 @@ class FeedViewModel @Inject constructor(
             if (tag == null) questions
             else questions.filter { tag in it.tags }
         }
+        .combine(sort) { questions, sort ->
+            when (sort) {
+                // RESOLVE_BY keeps the DAO order (resolveBy ASC for active,
+                // DESC for resolved) — the app's original behavior.
+                FeedSort.RESOLVE_BY -> questions
+                FeedSort.CREATED_NEWEST -> questions.sortedByDescending { it.createdAt }
+            }
+        }
 
     /** All tag names across the cache, independent of the active filter. */
     private val availableTags: Flow<List<String>> = repository.observeAll()
@@ -131,7 +158,7 @@ class FeedViewModel @Inject constructor(
     val uiState: StateFlow<FeedUiState> = combine(
         listOf(
             questionsFlow, _filter, _isRefreshing, _error, _detail,
-            _searchQuery, _selectedTag, availableTags, _isInitialLoad,
+            _searchQuery, _selectedTag, availableTags, sort, _isInitialLoad,
             _hasMore, _isLoadingMore, isOffline, syncErrors, _showSyncErrorsSheet,
         )
     ) { args ->
@@ -145,12 +172,13 @@ class FeedViewModel @Inject constructor(
             searchQuery = args[5] as String,
             selectedTag = args[6] as String?,
             availableTags = args[7] as List<String>,
-            isInitialLoad = args[8] as Boolean,
-            hasMore = args[9] as Boolean,
-            isLoadingMore = args[10] as Boolean,
-            isOffline = args[11] as Boolean,
-            syncErrors = args[12] as List<SyncErrorEntry>,
-            showSyncErrorsSheet = args[13] as Boolean,
+            sort = args[8] as FeedSort,
+            isInitialLoad = args[9] as Boolean,
+            hasMore = args[10] as Boolean,
+            isLoadingMore = args[11] as Boolean,
+            isOffline = args[12] as Boolean,
+            syncErrors = args[13] as List<SyncErrorEntry>,
+            showSyncErrorsSheet = args[14] as Boolean,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FeedUiState())
 
@@ -169,6 +197,13 @@ class FeedViewModel @Inject constructor(
     /** Filter the feed to questions carrying [tag]; null clears the filter. */
     fun setSelectedTag(tag: String?) {
         _selectedTag.value = tag
+    }
+
+    /** Persisted — the chosen order survives app restarts. */
+    fun setSort(sort: FeedSort) {
+        viewModelScope.launch {
+            prefs.setFeedSort(sort.name)
+        }
     }
 
     fun refresh() {

@@ -36,6 +36,7 @@ import dev.russell.fatebook.domain.model.Resolution
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.time.LocalDate
@@ -114,6 +115,11 @@ class QuestionRepository @Inject constructor(
      * (id prefixed `local-`) that haven't synced yet.
      */
     suspend fun refresh(): List<Question> {
+        // In full-history mode a page-1-only refresh would prune every question
+        // beyond the first page, so refresh must re-fetch everything.
+        if (prefs.fullHistorySynced.first()) {
+            return loadAllQuestions()
+        }
         val response = api.getQuestions()
         nextCursor = response.nextCursor
         commitDtos(response.items, prune = true)
@@ -132,17 +138,19 @@ class QuestionRepository @Inject constructor(
 
     fun hasMore(): Boolean = nextCursor != null
 
-    suspend fun loadAllQuestions() {
+    suspend fun loadAllQuestions(onProgress: (loadedCount: Int) -> Unit = {}): List<Question> {
         val collected = mutableListOf<QuestionDto>()
         var cursor: Int? = null
         do {
             val response = api.getQuestions(cursor = cursor)
             collected += response.items
+            onProgress(collected.size)
             cursor = response.nextCursor
             nextCursor = cursor
         } while (cursor != null)
         commitDtos(collected, prune = true)
         captureDisplayName(collected)
+        return collected.map { it.toDomain() }
     }
 
     private suspend fun commitDtos(dtos: List<QuestionDto>, prune: Boolean) {

@@ -2,10 +2,12 @@ package dev.russell.fatebook.ui.analytics
 
 import com.google.common.truth.Truth.assertThat
 import dev.russell.fatebook.data.local.ForecastEntity
+import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -31,6 +33,7 @@ class AnalyticsViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private val repository = mockk<QuestionRepository>(relaxed = true)
+    private val prefs = mockk<UserPreferences>(relaxed = true)
 
     private val base: Instant = Instant.parse("2024-01-01T00:00:00Z")
     private val dayMs = 1000L * 60 * 60 * 24
@@ -41,6 +44,8 @@ class AnalyticsViewModelTest {
         every { repository.observeAll() } returns flowOf(emptyList())
         every { repository.observeResolved() } returns flowOf(emptyList())
         every { repository.observeAllForecasts() } returns flowOf(emptyList())
+        // Already synced by default so init doesn't kick off the history pull.
+        every { prefs.fullHistorySynced } returns flowOf(true)
     }
 
     @After
@@ -49,7 +54,7 @@ class AnalyticsViewModelTest {
     }
 
     private fun createViewModel(): AnalyticsViewModel {
-        return AnalyticsViewModel(repository)
+        return AnalyticsViewModel(repository, prefs)
     }
 
     private fun forecast(questionId: String, value: Double, createdAtMs: Long = base.toEpochMilli()) =
@@ -173,6 +178,73 @@ class AnalyticsViewModelTest {
         assertThat(
             AnalyticsViewModel.countScoredForecasts(listOf(mc, quantity), forecasts),
         ).isEqualTo(0)
+    }
+
+    // --- full-history sync ---
+
+    @Test
+    fun `init auto-triggers the history sync when never synced`() = runTest {
+        every { prefs.fullHistorySynced } returns flowOf(false)
+        coEvery { repository.loadAllQuestions(any()) } returns emptyList()
+
+        createViewModel()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.loadAllQuestions(any()) }
+        coVerify { prefs.setFullHistorySynced(true) }
+    }
+
+    @Test
+    fun `init skips the history sync when already synced`() = runTest {
+        every { prefs.fullHistorySynced } returns flowOf(true)
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.loadAllQuestions(any()) }
+        assertThat(vm.uiState.value.historySync.isComplete).isTrue()
+    }
+
+    @Test
+    fun `syncFullHistory reports progress and completion`() = runTest {
+        every { prefs.fullHistorySynced } returns flowOf(true)
+        coEvery { repository.loadAllQuestions(any()) } coAnswers {
+            firstArg<(Int) -> Unit>().invoke(100)
+            firstArg<(Int) -> Unit>().invoke(200)
+            emptyList()
+        }
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.syncFullHistory()
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.historySync.isComplete).isTrue()
+        assertThat(vm.uiState.value.historySync.syncedCount).isEqualTo(200)
+        coVerify { prefs.setFullHistorySynced(true) }
+    }
+
+    @Test
+    fun `syncFullHistory surfaces errors quietly and stays incomplete`() = runTest {
+        every { prefs.fullHistorySynced } returns flowOf(false)
+        coEvery { repository.loadAllQuestions(any()) } throws RuntimeException("boom")
+
+        val vm = createViewModel() // init auto-triggers and fails
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.historySync.isComplete).isFalse()
+        assertThat(vm.uiState.value.historySync.error).isEqualTo("boom")
+        coVerify(exactly = 0) { prefs.setFullHistorySynced(true) }
     }
 
     @Test

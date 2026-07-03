@@ -60,6 +60,18 @@ class UserPreferences @Inject constructor(
     val lastPredictionDateEpochMs: Flow<Long> =
         context.dataStore.data.map { it[LAST_PREDICTION_DATE] ?: 0L }
 
+    /** Feed sort order; value is a [dev.russell.fatebook.ui.feed.FeedSort] name. */
+    val feedSort: Flow<String> =
+        context.dataStore.data.map { it[FEED_SORT] ?: "RESOLVE_BY" }
+
+    /**
+     * True once the full question history has been synced into Room.
+     * From then on refresh() re-fetches all pages, not just the first —
+     * otherwise the next pull-to-refresh would prune the synced history.
+     */
+    val fullHistorySynced: Flow<Boolean> =
+        context.dataStore.data.map { it[FULL_HISTORY_SYNCED] ?: false }
+
     var displayName: String?
         get() = encryptedPrefs.getString(KEY_DISPLAY_NAME, null)
         set(value) = encryptedPrefs.edit().putString(KEY_DISPLAY_NAME, value).apply()
@@ -79,6 +91,14 @@ class UserPreferences @Inject constructor(
         context.dataStore.edit { it[LAST_PREDICTION_DATE] = epochMs }
     }
 
+    suspend fun setFeedSort(sort: String) {
+        context.dataStore.edit { it[FEED_SORT] = sort }
+    }
+
+    suspend fun setFullHistorySynced(synced: Boolean) {
+        context.dataStore.edit { it[FULL_HISTORY_SYNCED] = synced }
+    }
+
     fun clearAll() {
         encryptedPrefs.edit().clear().apply()
     }
@@ -90,5 +110,7 @@ class UserPreferences @Inject constructor(
         private val REMINDER_HOUR = intPreferencesKey("reminder_hour")
         private val REMINDER_MINUTE = intPreferencesKey("reminder_minute")
         private val LAST_PREDICTION_DATE = longPreferencesKey("last_prediction_date")
+        private val FEED_SORT = stringPreferencesKey("feed_sort")
+        private val FULL_HISTORY_SYNCED = booleanPreferencesKey("full_history_synced")
     }
 }

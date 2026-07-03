@@ -4,14 +4,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.russell.fatebook.data.local.ForecastEntity
+import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -35,6 +40,14 @@ data class TagBrierEntry(
     val questionCount: Int,
 )
 
+/** Progress of the one-off "sync full history" pull. */
+data class HistorySyncState(
+    val isSyncing: Boolean = false,
+    val syncedCount: Int = 0,
+    val isComplete: Boolean = false,
+    val error: String? = null,
+)
+
 data class AnalyticsUiState(
     val brierScore: Double? = null,
     val totalForecasts: Int = 0,
@@ -42,19 +55,25 @@ data class AnalyticsUiState(
     val currentStreak: Int = 0,
     val dailyActivity: List<DayActivity> = emptyList(),
     val tagBreakdown: List<TagBrierEntry> = emptyList(),
+    val historySync: HistorySyncState = HistorySyncState(),
     val isLoading: Boolean = true,
 )
 
 @HiltViewModel
 class AnalyticsViewModel @Inject constructor(
     private val repository: QuestionRepository,
+    private val prefs: UserPreferences,
 ) : ViewModel() {
+
+    private val _historySync = MutableStateFlow(HistorySyncState())
+    private var autoSyncAttempted = false
 
     val uiState: StateFlow<AnalyticsUiState> = combine(
         repository.observeAll(),
         repository.observeResolved(),
         repository.observeAllForecasts(),
-    ) { allQuestions, resolvedQuestions, allForecasts ->
+        _historySync,
+    ) { allQuestions, resolvedQuestions, allForecasts, historySync ->
         val forecastsByQuestion = allForecasts.groupBy { it.questionId }
 
         AnalyticsUiState(
@@ -64,10 +83,50 @@ class AnalyticsViewModel @Inject constructor(
             currentStreak = computeStreak(allForecasts),
             dailyActivity = computeDailyActivity(allForecasts),
             tagBreakdown = computeTagBreakdown(resolvedQuestions, forecastsByQuestion),
+            historySync = historySync,
             isLoading = false,
         )
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalyticsUiState())
+
+    init {
+        // First visit to Analytics kicks off the full-history pull automatically;
+        // afterwards refresh() always re-fetches everything, so once is enough.
+        viewModelScope.launch {
+            if (prefs.fullHistorySynced.first()) {
+                _historySync.update { it.copy(isComplete = true) }
+            } else if (!autoSyncAttempted) {
+                autoSyncAttempted = true
+                syncFullHistory()
+            }
+        }
+    }
+
+    /**
+     * Pull every page of questions into the Room cache so Brier/calibration
+     * cover the full account history, then flip the flag that keeps refresh()
+     * in full-history mode.
+     */
+    fun syncFullHistory() {
+        if (_historySync.value.isSyncing) return
+        viewModelScope.launch {
+            _historySync.update {
+                it.copy(isSyncing = true, syncedCount = 0, error = null)
+            }
+            try {
+                repository.loadAllQuestions { loaded ->
+                    _historySync.update { it.copy(syncedCount = loaded) }
+                }
+                prefs.setFullHistorySynced(true)
+                _historySync.update { it.copy(isSyncing = false, isComplete = true) }
+            } catch (e: Exception) {
+                // Quiet failure — analytics still works over whatever is cached.
+                _historySync.update {
+                    it.copy(isSyncing = false, error = e.message ?: "Sync failed")
+                }
+            }
+        }
+    }
 
     companion object {
 

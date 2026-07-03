@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BarChart
@@ -56,6 +57,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardCapitalization
 
@@ -85,6 +87,7 @@ fun FeedScreen(
         onFilterSelected = viewModel::setFilter,
         onSearchQueryChanged = viewModel::setSearchQuery,
         onTagSelected = viewModel::setSelectedTag,
+        onSortSelected = viewModel::setSort,
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadMore,
         onQuestionClick = viewModel::showDetailSheet,
@@ -127,6 +130,7 @@ fun FeedScreenContent(
     onFilterSelected: (FeedFilter) -> Unit = {},
     onSearchQueryChanged: (String) -> Unit = {},
     onTagSelected: (String?) -> Unit = {},
+    onSortSelected: (FeedSort) -> Unit = {},
     onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     onQuestionClick: (dev.russell.fatebook.domain.model.Question) -> Unit = {},
@@ -162,6 +166,7 @@ fun FeedScreenContent(
             TopAppBar(
                 title = { Text("Fatebook") },
                 actions = {
+                    SortMenuAction(sort = state.sort, onSortSelected = onSortSelected)
                     IconButton(onClick = onAnalyticsClick) {
                         Icon(Icons.Default.BarChart, contentDescription = "Analytics")
                     }
@@ -391,6 +396,46 @@ fun FeedScreenContent(
             onToggleSharedPublicly = onToggleSharedPublicly,
             onDismiss = onDismissDetailSheet,
         )
+    }
+}
+
+@Composable
+private fun SortMenuAction(
+    sort: FeedSort,
+    onSortSelected: (FeedSort) -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { menuExpanded = true }) {
+            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
+        }
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+        ) {
+            FeedSort.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            when (option) {
+                                FeedSort.RESOLVE_BY -> "By resolve date"
+                                FeedSort.CREATED_NEWEST -> "Newest first"
+                            },
+                        )
+                    },
+                    leadingIcon = {
+                        RadioButton(
+                            selected = sort == option,
+                            onClick = null,
+                        )
+                    },
+                    onClick = {
+                        onSortSelected(option)
+                        menuExpanded = false
+                    },
+                )
+            }
+        }
     }
 }
 

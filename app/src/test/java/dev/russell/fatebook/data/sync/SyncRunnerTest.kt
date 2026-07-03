@@ -15,6 +15,7 @@ import dev.russell.fatebook.testutil.FakeQuestionDao
 import dev.russell.fatebook.testutil.TestData
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Before
@@ -46,6 +47,7 @@ class SyncRunnerTest {
         pendingDao = FakePendingMutationDao()
         prefs = mockk(relaxed = true)
         every { prefs.apiKey } returns "test-api-key"
+        every { prefs.fullHistorySynced } returns flowOf(false)
         enqueuer = MutationEnqueuer(pendingDao, Moshi.Builder().build())
         val transactor = Transactor { block -> block() }
         val noopScheduler = SyncScheduler { /* tests drive the runner directly */ }

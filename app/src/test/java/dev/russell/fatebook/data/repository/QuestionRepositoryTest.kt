@@ -24,6 +24,7 @@ import dev.russell.fatebook.testutil.TestData
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
@@ -53,6 +54,7 @@ class QuestionRepositoryTest {
         pendingDao = FakePendingMutationDao()
         prefs = mockk(relaxed = true)
         every { prefs.apiKey } returns "test-api-key"
+        every { prefs.fullHistorySynced } returns flowOf(false)
         enqueuer = MutationEnqueuer(pendingDao, Moshi.Builder().build())
         scheduleCallCount = 0
         val syncScheduler = SyncScheduler { scheduleCallCount++ }
@@ -731,6 +733,63 @@ class QuestionRepositoryTest {
         repository.refresh()
 
         assertThat(optionDao.storedOptions.map { it.id }).containsExactly("fresh")
+    }
+
+    @Test
+    fun `refresh fetches all pages once full-history mode is on`() = runTest {
+        every { prefs.fullHistorySynced } returns flowOf(true)
+        api.getQuestionsResponse = { cursor ->
+            when (cursor) {
+                null -> TestData.questionsResponse(
+                    items = listOf(TestData.questionDto(id = "q1")),
+                    nextCursor = 1,
+                )
+                else -> TestData.questionsResponse(
+                    items = listOf(TestData.questionDto(id = "q2")),
+                    nextCursor = null,
+                )
+            }
+        }
+
+        repository.refresh()
+
+        assertThat(api.getQuestionsCalls).containsExactly(null, 1).inOrder()
+        assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2")
+        assertThat(repository.hasMore()).isFalse()
+    }
+
+    @Test
+    fun `full-history refresh prunes questions missing from the complete fetch`() = runTest {
+        every { prefs.fullHistorySynced } returns flowOf(true)
+        dao.upsertAll(listOf(TestData.questionEntity(id = "stale")))
+        api.getQuestionsResponse = {
+            TestData.questionsResponse(items = listOf(TestData.questionDto(id = "keep")))
+        }
+
+        repository.refresh()
+
+        assertThat(dao.storedQuestions.map { it.id }).containsExactly("keep")
+    }
+
+    @Test
+    fun `loadAllQuestions reports progress per page`() = runTest {
+        api.getQuestionsResponse = { cursor ->
+            when (cursor) {
+                null -> TestData.questionsResponse(
+                    items = listOf(TestData.questionDto(id = "q1"), TestData.questionDto(id = "q2")),
+                    nextCursor = 2,
+                )
+                else -> TestData.questionsResponse(
+                    items = listOf(TestData.questionDto(id = "q3")),
+                    nextCursor = null,
+                )
+            }
+        }
+
+        val progress = mutableListOf<Int>()
+        repository.loadAllQuestions { progress.add(it) }
+
+        assertThat(progress).containsExactly(2, 3).inOrder()
     }
 
     @Test

@@ -32,7 +32,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -73,7 +75,11 @@ fun AnalyticsScreen(
     viewModel: AnalyticsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    AnalyticsScreenContent(state = state, onBack = onBack)
+    AnalyticsScreenContent(
+        state = state,
+        onBack = onBack,
+        onSyncFullHistory = viewModel::syncFullHistory,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,6 +87,7 @@ fun AnalyticsScreen(
 fun AnalyticsScreenContent(
     state: AnalyticsUiState,
     onBack: () -> Unit = {},
+    onSyncFullHistory: () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -151,6 +158,55 @@ fun AnalyticsScreenContent(
                         style = MaterialTheme.typography.titleMedium,
                     )
                     TagBreakdownList(entries = state.tagBreakdown)
+                }
+
+                HistorySyncRow(
+                    syncState = state.historySync,
+                    onSyncClick = onSyncFullHistory,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Status row for the full-history pull. Analytics only sees what's in the
+ * Room cache, so until this completes the stats cover recent pages only.
+ */
+@Composable
+private fun HistorySyncRow(
+    syncState: HistorySyncState,
+    onSyncClick: () -> Unit,
+) {
+    when {
+        syncState.isSyncing -> {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Syncing full history… ${syncState.syncedCount} questions loaded",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+        }
+        syncState.isComplete -> {
+            Text(
+                text = "Full history synced — stats cover all your questions",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        else -> {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                syncState.error?.let { error ->
+                    Text(
+                        text = "History sync failed: $error",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                OutlinedButton(onClick = onSyncClick, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sync full history")
                 }
             }
         }

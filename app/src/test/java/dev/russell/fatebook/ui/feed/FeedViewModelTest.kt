@@ -2,6 +2,7 @@ package dev.russell.fatebook.ui.feed
 
 import com.google.common.truth.Truth.assertThat
 import dev.russell.fatebook.data.network.NetworkMonitor
+import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
@@ -34,6 +35,7 @@ class FeedViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private val repository = mockk<QuestionRepository>(relaxed = true)
     private val networkMonitor = mockk<NetworkMonitor>(relaxed = true)
+    private val prefs = mockk<UserPreferences>(relaxed = true)
 
     @Before
     fun setup() {
@@ -46,6 +48,7 @@ class FeedViewModelTest {
         coEvery { repository.refresh() } returns emptyList()
         every { repository.hasMore() } returns false
         every { networkMonitor.isOnline } returns MutableStateFlow(true)
+        every { prefs.feedSort } returns flowOf("RESOLVE_BY")
     }
 
     @After
@@ -54,7 +57,7 @@ class FeedViewModelTest {
     }
 
     private fun createViewModel(): FeedViewModel {
-        return FeedViewModel(repository, networkMonitor)
+        return FeedViewModel(repository, networkMonitor, prefs)
     }
 
     @Test
@@ -581,6 +584,45 @@ class FeedViewModelTest {
         vm.setSelectedTag(null)
         advanceUntilIdle()
         assertThat(vm.uiState.value.questions.map { it.id }).containsExactly("q1", "q2")
+    }
+
+    // --- sort ---
+
+    @Test
+    fun `CREATED_NEWEST sort orders questions by creation date descending`() = runTest {
+        val older = TestData.question(
+            id = "old",
+            createdAt = java.time.Instant.parse("2020-01-01T00:00:00Z"),
+            resolveBy = java.time.Instant.parse("2030-01-01T00:00:00Z"),
+        )
+        val newer = TestData.question(
+            id = "new",
+            createdAt = java.time.Instant.parse("2023-01-01T00:00:00Z"),
+            resolveBy = java.time.Instant.parse("2031-01-01T00:00:00Z"),
+        )
+        // DAO order: by resolveBy ascending -> old, new
+        coEvery { repository.observeActive() } returns flowOf(listOf(older, newer))
+        every { prefs.feedSort } returns flowOf("CREATED_NEWEST")
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.sort).isEqualTo(FeedSort.CREATED_NEWEST)
+        assertThat(vm.uiState.value.questions.map { it.id }).containsExactly("new", "old").inOrder()
+    }
+
+    @Test
+    fun `setSort persists the choice`() = runTest {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.setSort(FeedSort.CREATED_NEWEST)
+        advanceUntilIdle()
+
+        coVerify { prefs.setFeedSort("CREATED_NEWEST") }
     }
 
     // --- multiple choice ---

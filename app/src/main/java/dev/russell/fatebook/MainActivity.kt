@@ -1,5 +1,6 @@
 package dev.russell.fatebook
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,6 +26,7 @@ class MainActivity : ComponentActivity() {
             NotificationHelper.EXTRA_OPEN_RESOLVE_FILTER, false,
         )
         val openQuestionId = intent.getStringExtra(NotificationHelper.EXTRA_QUESTION_ID)
+        val sharedText = extractSharedText(intent)
         setContent {
             FatebookTheme {
                 FatebookNavGraph(
@@ -32,8 +34,19 @@ class MainActivity : ComponentActivity() {
                     openCreate = openCreate,
                     openResolveFilter = openResolveFilter,
                     openQuestionId = openQuestionId,
+                    sharedText = sharedText,
                 )
             }
         }
+    }
+
+    /** ACTION_SEND text from another app becomes the new question's title. */
+    private fun extractSharedText(intent: Intent): String? {
+        if (intent.action != Intent.ACTION_SEND || intent.type != "text/plain") return null
+        return intent.getStringExtra(Intent.EXTRA_TEXT)
+            ?.lineSequence()
+            ?.firstOrNull { it.isNotBlank() }
+            ?.trim()
+            ?.take(200)
     }
 }

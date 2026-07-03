@@ -1,5 +1,6 @@
 package dev.russell.fatebook.ui.create
 
+import androidx.lifecycle.SavedStateHandle
 import com.google.common.truth.Truth.assertThat
 import dev.russell.fatebook.data.repository.QuestionRepository
 import io.mockk.coEvery
@@ -33,7 +34,22 @@ class CreateViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun createViewModel() = CreateViewModel(repository)
+    private fun createViewModel(savedStateHandle: SavedStateHandle = SavedStateHandle()) =
+        CreateViewModel(repository, savedStateHandle)
+
+    @Test
+    fun `prefill from SavedStateHandle seeds the title`() {
+        val vm = createViewModel(SavedStateHandle(mapOf("prefill" to "Will shared text work?")))
+
+        assertThat(vm.state.value.title).isEqualTo("Will shared text work?")
+    }
+
+    @Test
+    fun `blank prefill is ignored`() {
+        val vm = createViewModel(SavedStateHandle(mapOf("prefill" to "   ")))
+
+        assertThat(vm.state.value.title).isEmpty()
+    }
 
     @Test
     fun `initial state has correct defaults`() {

@@ -1,5 +1,6 @@
 package dev.russell.fatebook.ui.create
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,10 +27,18 @@ data class CreateUiState(
 @HiltViewModel
 class CreateViewModel @Inject constructor(
     private val repository: QuestionRepository,
+    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CreateUiState())
     val state: StateFlow<CreateUiState> = _state.asStateFlow()
+
+    init {
+        // Share-target flow: text shared from another app seeds the title.
+        savedStateHandle.get<String>("prefill")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { prefill -> _state.value = _state.value.copy(title = prefill) }
+    }
 
     fun setTitle(title: String) {
         _state.value = _state.value.copy(title = title)

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_prediction"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_new_prediction_short"
+        android:shortcutLongLabel="@string/shortcut_new_prediction_long">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="dev.russell.fatebook"
+            android:targetClass="dev.russell.fatebook.MainActivity">
+            <!-- Matches NotificationHelper.EXTRA_OPEN_CREATE -->
+            <extra
+                android:name="open_create"
+                android:value="true" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="ready_to_resolve"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_resolve"
+        android:shortcutShortLabel="@string/shortcut_ready_to_resolve_short"
+        android:shortcutLongLabel="@string/shortcut_ready_to_resolve_long">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="dev.russell.fatebook"
+            android:targetClass="dev.russell.fatebook.MainActivity">
+            <!-- Matches NotificationHelper.EXTRA_OPEN_RESOLVE_FILTER -->
+            <extra
+                android:name="open_resolve_filter"
+                android:value="true" />
+        </intent>
+    </shortcut>
+</shortcuts>

@@ -5,4 +5,8 @@
     <string name="notification_channel_description">Reminds you to make a prediction each day</string>
     <string name="resolve_channel_name">Ready to Resolve</string>
     <string name="resolve_channel_description">Notifies you when questions are ready to be resolved</string>
+    <string name="shortcut_new_prediction_short">Predict</string>
+    <string name="shortcut_new_prediction_long">New prediction</string>
+    <string name="shortcut_ready_to_resolve_short">Resolve</string>
+    <string name="shortcut_ready_to_resolve_long">Ready to resolve</string>
 </resources>

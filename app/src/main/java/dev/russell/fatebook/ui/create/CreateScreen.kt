@@ -2,19 +2,26 @@ package dev.russell.fatebook.ui.create
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -24,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -49,11 +57,14 @@ fun CreateScreen(
         onTitleChanged = viewModel::setTitle,
         onResolveByChanged = viewModel::setResolveBy,
         onForecastChanged = viewModel::setForecast,
+        onTagInputChanged = viewModel::setTagInput,
+        onAddTag = viewModel::addTag,
+        onRemoveTag = viewModel::removeTag,
         onSubmit = viewModel::submit,
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CreateScreenContent(
     state: CreateUiState,
@@ -61,6 +72,9 @@ fun CreateScreenContent(
     onTitleChanged: (String) -> Unit = {},
     onResolveByChanged: (java.time.LocalDate) -> Unit = {},
     onForecastChanged: (Float) -> Unit = {},
+    onTagInputChanged: (String) -> Unit = {},
+    onAddTag: () -> Unit = {},
+    onRemoveTag: (String) -> Unit = {},
     onSubmit: () -> Unit = {},
 ) {
     Scaffold(
@@ -100,6 +114,41 @@ fun CreateScreenContent(
                 onDateSelected = onResolveByChanged,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            // Tags (optional, sent with the createQuestion call)
+            OutlinedTextField(
+                value = state.tagInput,
+                onValueChange = onTagInputChanged,
+                label = { Text("Add tag (optional)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                trailingIcon = {
+                    IconButton(onClick = onAddTag, enabled = state.tagInput.isNotBlank()) {
+                        Icon(Icons.Default.Add, contentDescription = "Add tag")
+                    }
+                },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onAddTag() }),
+            )
+
+            if (state.tags.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.tags.forEach { tag ->
+                        InputChip(
+                            selected = false,
+                            onClick = { onRemoveTag(tag) },
+                            label = { Text(tag) },
+                            trailingIcon = {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove tag $tag",
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 

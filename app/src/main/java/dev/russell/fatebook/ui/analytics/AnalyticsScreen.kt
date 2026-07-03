@@ -55,7 +55,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -142,6 +144,46 @@ fun AnalyticsScreenContent(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 ActivityHeatmap(dailyActivity = state.dailyActivity)
+
+                if (state.tagBreakdown.isNotEmpty()) {
+                    Text(
+                        text = "Brier by tag",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    TagBreakdownList(entries = state.tagBreakdown)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TagBreakdownList(entries: List<TagBrierEntry>) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        entries.forEach { entry ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = entry.tag,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "%.3f".format(entry.brier),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = " · ${entry.questionCount} " +
+                        if (entry.questionCount == 1) "question" else "questions",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

@@ -53,6 +53,7 @@ import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.ui.components.DatePickerField
 import dev.russell.fatebook.ui.components.ProbabilitySlider
+import dev.russell.fatebook.ui.components.TagChipRow
 import dev.russell.fatebook.ui.feed.DetailSheetState
 import dev.russell.fatebook.ui.theme.ResolveAmbiguous
 import dev.russell.fatebook.ui.theme.ResolveNo
@@ -201,6 +202,12 @@ private fun ColumnScope.ReadModeContent(
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+
+    // Tags (read-only; the public API only supports tags at creation)
+    if (question.tags.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(8.dp))
+        TagChipRow(tags = question.tags)
+    }
 
     // Notes
     if (!question.notes.isNullOrBlank()) {

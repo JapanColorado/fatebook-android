@@ -37,6 +37,8 @@ interface FatebookApi {
         @Query("title") title: String,
         @Query("resolveBy") resolveBy: String,
         @Query("forecast") forecast: Double,
+        // Repeated query params; the server accepts one-or-many tag values.
+        @Query("tags") tags: List<String>? = null,
     ): String
 
     /**

@@ -41,6 +41,7 @@ class FeedViewModelTest {
         coEvery { repository.observeActive() } returns flowOf(emptyList())
         coEvery { repository.observeResolved() } returns flowOf(emptyList())
         coEvery { repository.observeReadyToResolve() } returns flowOf(emptyList())
+        coEvery { repository.observeAll() } returns flowOf(emptyList())
         coEvery { repository.observeErroredMutations() } returns flowOf(emptyList())
         coEvery { repository.refresh() } returns emptyList()
         every { repository.hasMore() } returns false
@@ -548,6 +549,38 @@ class FeedViewModelTest {
         val error = vm.uiState.value.error
         assertThat(error).isInstanceOf(FeedError.Other::class.java)
         assertThat(error?.message).contains("500")
+    }
+
+    // --- tags ---
+
+    @Test
+    fun `setSelectedTag filters questions and availableTags lists all cache tags`() = runTest {
+        val tagged = TestData.question(id = "q1", tags = listOf("work"))
+        val untagged = TestData.question(id = "q2")
+        val resolvedTagged = TestData.question(
+            id = "q3",
+            resolved = true,
+            resolution = Resolution.YES,
+            tags = listOf("health"),
+        )
+        coEvery { repository.observeActive() } returns flowOf(listOf(tagged, untagged))
+        coEvery { repository.observeAll() } returns flowOf(listOf(tagged, untagged, resolvedTagged))
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.availableTags).containsExactly("health", "work").inOrder()
+
+        vm.setSelectedTag("work")
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.questions.map { it.id }).containsExactly("q1")
+
+        vm.setSelectedTag(null)
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.questions.map { it.id }).containsExactly("q1", "q2")
     }
 
     // --- multiple choice ---

@@ -733,6 +733,20 @@ class QuestionRepositoryTest {
         assertThat(optionDao.storedOptions.map { it.id }).containsExactly("fresh")
     }
 
+    @Test
+    fun `createQuestion stores tags optimistically and in the payload`() = runTest {
+        repository.createQuestion(
+            title = "Tagged?",
+            resolveBy = LocalDate.of(2030, 1, 1),
+            forecast = 0.5,
+            tags = listOf("work", "health"),
+        )
+
+        assertThat(dao.storedQuestions.single().tagsJson).isEqualTo("""["work","health"]""")
+        val payload = enqueuer.decodeCreate(pendingDao.stored.single().payloadJson)
+        assertThat(payload.tags).containsExactly("work", "health").inOrder()
+    }
+
     // --- multiple-choice mutations ---
 
     @Test

@@ -19,7 +19,14 @@ class FakeFatebookApi : FatebookApi {
     var setSharedPubliclyError: Exception? = null
 
     val getQuestionsCalls = mutableListOf<Int?>()
-    val createQuestionCalls = mutableListOf<Triple<String, String, Double>>()
+    val createQuestionCalls = mutableListOf<CreateQuestionCall>()
+
+    data class CreateQuestionCall(
+        val title: String,
+        val resolveBy: String,
+        val forecast: Double,
+        val tags: List<String>?,
+    )
     val resolveQuestionCalls = mutableListOf<ResolveQuestionCall>()
     val addForecastCalls = mutableListOf<AddForecastCall>()
     val editQuestionCalls = mutableListOf<EditQuestionCall>()
@@ -73,8 +80,9 @@ class FakeFatebookApi : FatebookApi {
         title: String,
         resolveBy: String,
         forecast: Double,
+        tags: List<String>?,
     ): String {
-        createQuestionCalls.add(Triple(title, resolveBy, forecast))
+        createQuestionCalls.add(CreateQuestionCall(title, resolveBy, forecast, tags))
         return createQuestionResult
     }
 

@@ -15,9 +15,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -81,6 +84,7 @@ fun FeedScreen(
         onAnalyticsClick = onAnalyticsClick,
         onFilterSelected = viewModel::setFilter,
         onSearchQueryChanged = viewModel::setSearchQuery,
+        onTagSelected = viewModel::setSelectedTag,
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadMore,
         onQuestionClick = viewModel::showDetailSheet,
@@ -122,6 +126,7 @@ fun FeedScreenContent(
     onAnalyticsClick: () -> Unit = {},
     onFilterSelected: (FeedFilter) -> Unit = {},
     onSearchQueryChanged: (String) -> Unit = {},
+    onTagSelected: (String?) -> Unit = {},
     onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     onQuestionClick: (dev.russell.fatebook.domain.model.Question) -> Unit = {},
@@ -227,6 +232,13 @@ fun FeedScreenContent(
                                 }
                             )
                         },
+                    )
+                }
+                if (state.availableTags.isNotEmpty()) {
+                    TagFilterChip(
+                        availableTags = state.availableTags,
+                        selectedTag = state.selectedTag,
+                        onTagSelected = onTagSelected,
                     )
                 }
             }
@@ -379,5 +391,53 @@ fun FeedScreenContent(
             onToggleSharedPublicly = onToggleSharedPublicly,
             onDismiss = onDismissDetailSheet,
         )
+    }
+}
+
+/**
+ * A single chip that opens a dropdown of the user's tags — tags are unbounded,
+ * so a chip-per-tag row would crowd out the main filters.
+ */
+@Composable
+private fun TagFilterChip(
+    availableTags: List<String>,
+    selectedTag: String?,
+    onTagSelected: (String?) -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Box {
+        FilterChip(
+            selected = selectedTag != null,
+            onClick = { menuExpanded = true },
+            label = { Text(selectedTag ?: "Tags") },
+            trailingIcon = {
+                Icon(
+                    Icons.Default.ArrowDropDown,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("All tags") },
+                onClick = {
+                    onTagSelected(null)
+                    menuExpanded = false
+                },
+            )
+            availableTags.forEach { tag ->
+                DropdownMenuItem(
+                    text = { Text(tag) },
+                    onClick = {
+                        onTagSelected(tag)
+                        menuExpanded = false
+                    },
+                )
+            }
+        }
     }
 }

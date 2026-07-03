@@ -70,6 +70,8 @@ data class FeedUiState(
     val error: FeedError? = null,
     val detail: DetailSheetState = DetailSheetState(),
     val searchQuery: String = "",
+    val selectedTag: String? = null,
+    val availableTags: List<String> = emptyList(),
     val isInitialLoad: Boolean = true,
     val hasMore: Boolean = false,
     val isLoadingMore: Boolean = false,
@@ -91,6 +93,7 @@ class FeedViewModel @Inject constructor(
     private val _error = MutableStateFlow<FeedError?>(null)
     private val _detail = MutableStateFlow(DetailSheetState())
     private val _searchQuery = MutableStateFlow("")
+    private val _selectedTag = MutableStateFlow<String?>(null)
     private val _isInitialLoad = MutableStateFlow(true)
     private val _hasMore = MutableStateFlow(false)
     private val _isLoadingMore = MutableStateFlow(false)
@@ -114,12 +117,22 @@ class FeedViewModel @Inject constructor(
             if (query.isBlank()) questions
             else questions.filter { it.title.contains(query, ignoreCase = true) }
         }
+        .combine(_selectedTag) { questions, tag ->
+            if (tag == null) questions
+            else questions.filter { tag in it.tags }
+        }
+
+    /** All tag names across the cache, independent of the active filter. */
+    private val availableTags: Flow<List<String>> = repository.observeAll()
+        .map { questions ->
+            questions.flatMap { it.tags }.distinct().sortedBy { it.lowercase() }
+        }
 
     val uiState: StateFlow<FeedUiState> = combine(
         listOf(
             questionsFlow, _filter, _isRefreshing, _error, _detail,
-            _searchQuery, _isInitialLoad, _hasMore, _isLoadingMore,
-            isOffline, syncErrors, _showSyncErrorsSheet,
+            _searchQuery, _selectedTag, availableTags, _isInitialLoad,
+            _hasMore, _isLoadingMore, isOffline, syncErrors, _showSyncErrorsSheet,
         )
     ) { args ->
         @Suppress("UNCHECKED_CAST")
@@ -130,12 +143,14 @@ class FeedViewModel @Inject constructor(
             error = args[3] as FeedError?,
             detail = args[4] as DetailSheetState,
             searchQuery = args[5] as String,
-            isInitialLoad = args[6] as Boolean,
-            hasMore = args[7] as Boolean,
-            isLoadingMore = args[8] as Boolean,
-            isOffline = args[9] as Boolean,
-            syncErrors = args[10] as List<SyncErrorEntry>,
-            showSyncErrorsSheet = args[11] as Boolean,
+            selectedTag = args[6] as String?,
+            availableTags = args[7] as List<String>,
+            isInitialLoad = args[8] as Boolean,
+            hasMore = args[9] as Boolean,
+            isLoadingMore = args[10] as Boolean,
+            isOffline = args[11] as Boolean,
+            syncErrors = args[12] as List<SyncErrorEntry>,
+            showSyncErrorsSheet = args[13] as Boolean,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FeedUiState())
 
@@ -149,6 +164,11 @@ class FeedViewModel @Inject constructor(
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
+    }
+
+    /** Filter the feed to questions carrying [tag]; null clears the filter. */
+    fun setSelectedTag(tag: String?) {
+        _selectedTag.value = tag
     }
 
     fun refresh() {

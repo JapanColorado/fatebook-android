@@ -77,12 +77,12 @@ class CreateViewModelTest {
         advanceUntilIdle()
 
         assertThat(vm.state.value.error).isEqualTo("Title is required")
-        coVerify(exactly = 0) { repository.createQuestion(any(), any(), any()) }
+        coVerify(exactly = 0) { repository.createQuestion(any(), any(), any(), any()) }
     }
 
     @Test
     fun `submit sets success on completion`() = runTest {
-        coEvery { repository.createQuestion(any(), any(), any()) } returns "https://fatebook.io/q/new"
+        coEvery { repository.createQuestion(any(), any(), any(), any()) } returns "https://fatebook.io/q/new"
 
         val vm = createViewModel()
         vm.setTitle("Will it rain?")
@@ -96,7 +96,7 @@ class CreateViewModelTest {
 
     @Test
     fun `submit sets error on failure`() = runTest {
-        coEvery { repository.createQuestion(any(), any(), any()) } throws RuntimeException("API error")
+        coEvery { repository.createQuestion(any(), any(), any(), any()) } throws RuntimeException("API error")
 
         val vm = createViewModel()
         vm.setTitle("Will it rain?")
@@ -111,7 +111,7 @@ class CreateViewModelTest {
 
     @Test
     fun `submit rounds forecast to two decimals`() = runTest {
-        coEvery { repository.createQuestion(any(), any(), any()) } returns "url"
+        coEvery { repository.createQuestion(any(), any(), any(), any()) } returns "url"
 
         val vm = createViewModel()
         vm.setTitle("Test?")
@@ -125,13 +125,14 @@ class CreateViewModelTest {
                 title = "Test?",
                 resolveBy = any(),
                 forecast = 0.76, // (0.756 * 100).roundToInt() / 100.0 = 76/100 = 0.76
+                tags = any(),
             )
         }
     }
 
     @Test
     fun `submit trims title`() = runTest {
-        coEvery { repository.createQuestion(any(), any(), any()) } returns "url"
+        coEvery { repository.createQuestion(any(), any(), any(), any()) } returns "url"
 
         val vm = createViewModel()
         vm.setTitle("  Will it rain?  ")
@@ -144,6 +145,69 @@ class CreateViewModelTest {
                 title = "Will it rain?",
                 resolveBy = any(),
                 forecast = any(),
+                tags = any(),
+            )
+        }
+    }
+
+    // --- tags ---
+
+    @Test
+    fun `addTag turns input into a chip and clears the field`() {
+        val vm = createViewModel()
+        vm.setTagInput("work")
+        vm.addTag()
+
+        assertThat(vm.state.value.tags).containsExactly("work")
+        assertThat(vm.state.value.tagInput).isEmpty()
+    }
+
+    @Test
+    fun `addTag ignores blanks and duplicates`() {
+        val vm = createViewModel()
+        vm.setTagInput("   ")
+        vm.addTag()
+        assertThat(vm.state.value.tags).isEmpty()
+
+        vm.setTagInput("work")
+        vm.addTag()
+        vm.setTagInput("work")
+        vm.addTag()
+        assertThat(vm.state.value.tags).containsExactly("work")
+    }
+
+    @Test
+    fun `removeTag drops the chip`() {
+        val vm = createViewModel()
+        vm.setTagInput("work")
+        vm.addTag()
+        vm.setTagInput("health")
+        vm.addTag()
+
+        vm.removeTag("work")
+
+        assertThat(vm.state.value.tags).containsExactly("health")
+    }
+
+    @Test
+    fun `submit sends chips plus any tag still in the input field`() = runTest {
+        coEvery { repository.createQuestion(any(), any(), any(), any()) } returns "url"
+
+        val vm = createViewModel()
+        vm.setTitle("Test?")
+        vm.setTagInput("work")
+        vm.addTag()
+        vm.setTagInput("health") // not chipped — should still be sent
+
+        vm.submit()
+        advanceUntilIdle()
+
+        coVerify {
+            repository.createQuestion(
+                title = any(),
+                resolveBy = any(),
+                forecast = any(),
+                tags = listOf("work", "health"),
             )
         }
     }

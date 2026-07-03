@@ -14,6 +14,7 @@ data class CreateQuestionPayload(
     val resolveByEpochMs: Long,
     val forecast: Double,
     val notes: String?,
+    val tags: List<String> = emptyList(),
 )
 
 @JsonClass(generateAdapter = true)

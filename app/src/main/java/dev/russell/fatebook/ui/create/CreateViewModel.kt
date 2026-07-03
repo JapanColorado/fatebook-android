@@ -16,6 +16,8 @@ data class CreateUiState(
     val title: String = "",
     val resolveBy: LocalDate = LocalDate.now().plusDays(1),
     val forecast: Float = 0.5f,
+    val tags: List<String> = emptyList(),
+    val tagInput: String = "",
     val isSubmitting: Boolean = false,
     val error: String? = null,
     val success: Boolean = false,
@@ -41,6 +43,24 @@ class CreateViewModel @Inject constructor(
         _state.value = _state.value.copy(forecast = value)
     }
 
+    fun setTagInput(input: String) {
+        _state.value = _state.value.copy(tagInput = input)
+    }
+
+    /** Turn the current tag input into a chip (no-op for blank or duplicate). */
+    fun addTag() {
+        val tag = _state.value.tagInput.trim()
+        if (tag.isEmpty()) return
+        _state.value = _state.value.copy(
+            tags = if (tag in _state.value.tags) _state.value.tags else _state.value.tags + tag,
+            tagInput = "",
+        )
+    }
+
+    fun removeTag(tag: String) {
+        _state.value = _state.value.copy(tags = _state.value.tags - tag)
+    }
+
     fun submit() {
         val current = _state.value
         if (current.title.isBlank()) {
@@ -53,10 +73,19 @@ class CreateViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = current.copy(isSubmitting = true, error = null)
             try {
+                // A tag still sitting in the input field counts too.
+                val pendingTag = current.tagInput.trim()
+                val tags =
+                    if (pendingTag.isNotEmpty() && pendingTag !in current.tags) {
+                        current.tags + pendingTag
+                    } else {
+                        current.tags
+                    }
                 repository.createQuestion(
                     title = current.title.trim(),
                     resolveBy = current.resolveBy,
                     forecast = (current.forecast * 100).roundToInt() / 100.0,
+                    tags = tags,
                 )
                 _state.value = _state.value.copy(isSubmitting = false, success = true)
             } catch (e: Exception) {

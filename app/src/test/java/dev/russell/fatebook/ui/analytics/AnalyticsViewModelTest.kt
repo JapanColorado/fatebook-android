@@ -176,6 +176,38 @@ class AnalyticsViewModelTest {
     }
 
     @Test
+    fun `tag breakdown groups questions by tag and sorts best first`() {
+        // "work": one question at 0.8-YES -> 0.08. "health": one at 0.6-YES -> 0.32.
+        // "both" appears on the 0.8 question too.
+        val q1 = resolvedQuestion("q1", Resolution.YES).copy(tags = listOf("work", "both"))
+        val q2 = resolvedQuestion("q2", Resolution.YES).copy(tags = listOf("health"))
+        val untagged = resolvedQuestion("q3", Resolution.YES)
+        val forecasts = mapOf(
+            "q1" to listOf(forecast("q1", 0.8)),
+            "q2" to listOf(forecast("q2", 0.6)),
+            "q3" to listOf(forecast("q3", 0.9)),
+        )
+
+        val breakdown =
+            AnalyticsViewModel.computeTagBreakdown(listOf(q1, q2, untagged), forecasts)
+
+        assertThat(breakdown.map { it.tag }).containsExactly("work", "both", "health").inOrder()
+        assertThat(breakdown[0].brier).isWithin(0.0001).of(0.08)
+        assertThat(breakdown[2].brier).isWithin(0.0001).of(0.32)
+        assertThat(breakdown.map { it.questionCount }).containsExactly(1, 1, 1)
+    }
+
+    @Test
+    fun `tag breakdown skips tags with no scorable questions`() {
+        val ambiguous = resolvedQuestion("q1", Resolution.AMBIGUOUS).copy(tags = listOf("work"))
+        val forecasts = mapOf("q1" to listOf(forecast("q1", 0.8)))
+
+        assertThat(
+            AnalyticsViewModel.computeTagBreakdown(listOf(ambiguous), forecasts),
+        ).isEmpty()
+    }
+
+    @Test
     fun `brier score is null when no forecasts`() {
         val score = AnalyticsViewModel.computeBrierScore(emptyList(), emptyMap())
         assertThat(score).isNull()

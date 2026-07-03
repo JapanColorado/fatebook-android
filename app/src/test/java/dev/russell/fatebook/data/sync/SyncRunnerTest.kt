@@ -342,6 +342,26 @@ class SyncRunnerTest {
     }
 
     @Test
+    fun `CREATE_QUESTION passes tags through to the API`() = runTest {
+        repository.createQuestion(
+            title = "Tagged?",
+            resolveBy = LocalDate.of(2030, 1, 1),
+            forecast = 0.5,
+            tags = listOf("work"),
+        )
+        api.createQuestionResult = "https://fatebook.io/q/tagged--cm999abc888def"
+        api.getQuestionsResponse = {
+            TestData.questionsResponse(
+                items = listOf(TestData.questionDto(id = "cm999abc888def", title = "Tagged?")),
+            )
+        }
+
+        runner.run()
+
+        assertThat(api.createQuestionCalls.single().tags).containsExactly("work")
+    }
+
+    @Test
     fun `pre-v11 queued payload JSON without new fields still decodes and drains`() = runTest {
         // Rows enqueued before questionType/optionId existed must keep working.
         pendingDao.insert(

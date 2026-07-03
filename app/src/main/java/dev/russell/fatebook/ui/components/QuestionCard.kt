@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -77,6 +79,9 @@ fun QuestionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (question.tags.isNotEmpty()) {
+                    TagChipRow(tags = question.tags, maxVisible = 2)
+                }
             }
 
             Column(
@@ -132,6 +137,46 @@ fun QuestionCard(
                 }
             }
         }
+    }
+}
+
+/** Compact tag chips; shows up to [maxVisible] tags plus a "+n" overflow chip. */
+@Composable
+fun TagChipRow(
+    tags: List<String>,
+    modifier: Modifier = Modifier,
+    maxVisible: Int = Int.MAX_VALUE,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        tags.take(maxVisible).forEach { tag ->
+            TagChip(tag)
+        }
+        val overflow = tags.size - maxVisible
+        if (overflow > 0) {
+            TagChip("+$overflow")
+        }
+    }
+}
+
+@Composable
+private fun TagChip(text: String) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .widthIn(max = 120.dp)
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+        )
     }
 }
 

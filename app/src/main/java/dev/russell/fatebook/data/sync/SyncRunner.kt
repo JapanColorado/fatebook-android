@@ -143,6 +143,7 @@ class SyncRunner @Inject constructor(
                 payload.title,
                 payload.resolveByEpochMs.toIsoLocalDate(),
                 payload.forecast,
+                payload.tags.takeIf { it.isNotEmpty() },
             )
             repository.refresh()
 

@@ -74,6 +74,23 @@ class ComponentScreenshotTest {
     }
 
     @Test
+    fun questionCard_withTags() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                QuestionCard(
+                    question = TestData.question(
+                        title = "Will I hit my deadlift PR this quarter?",
+                        yourLatestForecast = 0.6,
+                        resolveBy = Instant.parse("2030-12-31T00:00:00Z"),
+                        tags = listOf("fitness", "goals", "long-shot"),
+                    ),
+                    onClick = {},
+                )
+            }
+        }
+    }
+
+    @Test
     fun questionCard_multipleChoice_active() {
         paparazzi.snapshot {
             FatebookTheme(dynamicColor = false) {

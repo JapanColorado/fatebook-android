@@ -29,12 +29,19 @@ data class DayActivity(
     val count: Int,
 )
 
+data class TagBrierEntry(
+    val tag: String,
+    val brier: Double,
+    val questionCount: Int,
+)
+
 data class AnalyticsUiState(
     val brierScore: Double? = null,
     val totalForecasts: Int = 0,
     val calibrationBuckets: List<CalibrationBucket> = emptyList(),
     val currentStreak: Int = 0,
     val dailyActivity: List<DayActivity> = emptyList(),
+    val tagBreakdown: List<TagBrierEntry> = emptyList(),
     val isLoading: Boolean = true,
 )
 
@@ -56,6 +63,7 @@ class AnalyticsViewModel @Inject constructor(
             calibrationBuckets = computeCalibrationBuckets(resolvedQuestions, forecastsByQuestion),
             currentStreak = computeStreak(allForecasts),
             dailyActivity = computeDailyActivity(allForecasts),
+            tagBreakdown = computeTagBreakdown(resolvedQuestions, forecastsByQuestion),
             isLoading = false,
         )
     }
@@ -155,6 +163,35 @@ class AnalyticsViewModel @Inject constructor(
                     count = inBucket.size,
                 )
             }
+        }
+
+        /**
+         * Per-tag Brier scores over the same inputs as the overall score.
+         * A question carrying several tags counts once under each of them.
+         * Sorted best (lowest) score first.
+         */
+        fun computeTagBreakdown(
+            resolvedQuestions: List<Question>,
+            forecastsByQuestion: Map<String, List<ForecastEntity>>,
+        ): List<TagBrierEntry> {
+            val tagged = resolvedQuestions.filter { it.tags.isNotEmpty() }
+            val byTag = tagged
+                .flatMap { q -> q.tags.map { tag -> tag to q } }
+                .groupBy({ it.first }, { it.second })
+            return byTag.mapNotNull { (tag, questions) ->
+                val brier = computeBrierScore(questions, forecastsByQuestion)
+                    ?: return@mapNotNull null
+                TagBrierEntry(
+                    tag = tag,
+                    brier = brier,
+                    questionCount = questions
+                        .count {
+                            it.type == QuestionType.BINARY &&
+                                (it.resolution == Resolution.YES || it.resolution == Resolution.NO) &&
+                                !forecastsByQuestion[it.id].isNullOrEmpty()
+                        },
+                )
+            }.sortedBy { it.brier }
         }
 
         fun computeStreak(allForecasts: List<ForecastEntity>): Int {

@@ -6,6 +6,7 @@ import dev.russell.fatebook.ui.analytics.AnalyticsScreenContent
 import dev.russell.fatebook.ui.analytics.AnalyticsUiState
 import dev.russell.fatebook.ui.analytics.CalibrationBucket
 import dev.russell.fatebook.ui.analytics.DayActivity
+import dev.russell.fatebook.ui.analytics.TagBrierEntry
 import dev.russell.fatebook.ui.theme.FatebookTheme
 import org.junit.Rule
 import org.junit.Test
@@ -72,6 +73,11 @@ class AnalyticsScreenScreenshotTest {
                         ),
                         currentStreak = 7,
                         dailyActivity = sampleHeatmap(),
+                        tagBreakdown = listOf(
+                            TagBrierEntry(tag = "work", brier = 0.12, questionCount = 8),
+                            TagBrierEntry(tag = "health", brier = 0.31, questionCount = 3),
+                            TagBrierEntry(tag = "long-shot", brier = 0.55, questionCount = 1),
+                        ),
                     ),
                 )
             }

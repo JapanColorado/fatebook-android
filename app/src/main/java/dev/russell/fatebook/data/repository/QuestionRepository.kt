@@ -185,6 +185,7 @@ class QuestionRepository @Inject constructor(
         title: String,
         resolveBy: LocalDate,
         forecast: Double,
+        tags: List<String> = emptyList(),
     ): String {
         val localId = PendingMutationEntity.LOCAL_ID_PREFIX + UUID.randomUUID()
         val resolveByMs = resolveBy.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
@@ -203,6 +204,7 @@ class QuestionRepository @Inject constructor(
             notes = null,
             sharedPublicly = false,
             unlisted = false,
+            tagsJson = tagsAdapter.toJson(tags),
         )
         transactor.transact {
             dao.upsertAll(listOf(question))
@@ -222,6 +224,7 @@ class QuestionRepository @Inject constructor(
                     resolveByEpochMs = resolveByMs,
                     forecast = forecast,
                     notes = null,
+                    tags = tags,
                 ),
                 createdAtEpochMs = nowMs,
             )

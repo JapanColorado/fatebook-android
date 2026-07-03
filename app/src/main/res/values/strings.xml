@@ -9,4 +9,5 @@
     <string name="shortcut_new_prediction_long">New prediction</string>
     <string name="shortcut_ready_to_resolve_short">Resolve</string>
     <string name="shortcut_ready_to_resolve_long">Ready to resolve</string>
+    <string name="widget_description">Ready-to-resolve count and quick create</string>
 </resources>

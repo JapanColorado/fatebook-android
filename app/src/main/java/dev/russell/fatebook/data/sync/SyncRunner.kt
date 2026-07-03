@@ -7,6 +7,7 @@ import dev.russell.fatebook.data.local.Transactor
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.FatebookApi
 import dev.russell.fatebook.data.repository.QuestionRepository
+import dev.russell.fatebook.widget.WidgetRefresher
 import retrofit2.HttpException
 import java.io.IOException
 import java.time.ZoneOffset
@@ -27,6 +28,7 @@ class SyncRunner @Inject constructor(
     private val transactor: Transactor,
     private val enqueuer: MutationEnqueuer,
     private val prefs: UserPreferences,
+    private val widgetRefresher: WidgetRefresher,
 ) {
     enum class Outcome { SUCCESS, RETRY }
 
@@ -119,6 +121,8 @@ class SyncRunner @Inject constructor(
         // Best-effort: a refresh failure shouldn't fail the worker.
         if (drainedAny) {
             runCatching { repository.refresh() }
+            // Synced mutations may have changed the ready-to-resolve count.
+            runCatching { widgetRefresher.refresh() }
         }
         return Outcome.SUCCESS
     }

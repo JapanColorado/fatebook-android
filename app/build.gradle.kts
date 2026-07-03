@@ -60,6 +60,10 @@ dependencies {
     implementation(libs.compose.material.icons.extended)
     debugImplementation(libs.compose.ui.tooling)
 
+    // Glance (home-screen widget)
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
+
     // AndroidX
     implementation(libs.core.ktx)
     implementation(libs.lifecycle.runtime.ktx)

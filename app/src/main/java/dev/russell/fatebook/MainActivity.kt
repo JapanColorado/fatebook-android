@@ -5,11 +5,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.navigation.FatebookNavGraph
 import dev.russell.fatebook.notification.NotificationHelper
 import dev.russell.fatebook.ui.theme.FatebookTheme
+import dev.russell.fatebook.widget.WidgetRefresher
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -18,9 +21,14 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var userPreferences: UserPreferences
 
+    @Inject
+    lateinit var widgetRefresher: WidgetRefresher
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Opening the app is a cheap moment to freshen the widget.
+        lifecycleScope.launch { runCatching { widgetRefresher.refresh() } }
         val openCreate = intent.getBooleanExtra(NotificationHelper.EXTRA_OPEN_CREATE, false)
         val openResolveFilter = intent.getBooleanExtra(
             NotificationHelper.EXTRA_OPEN_RESOLVE_FILTER, false,

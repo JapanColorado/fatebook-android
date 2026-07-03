@@ -29,7 +29,7 @@ class ReminderWorkerTest {
     @Before
     fun setup() {
         coEvery { repository.getReadyToResolve() } returns emptyList()
-        worker = ReminderWorker(context, params, repository, notificationHelper)
+        worker = ReminderWorker(context, params, repository, notificationHelper) { /* no-op widget */ }
     }
 
     @Test

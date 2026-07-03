@@ -7,6 +7,7 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.russell.fatebook.data.repository.QuestionRepository
+import dev.russell.fatebook.widget.WidgetRefresher
 
 @HiltWorker
 class ReminderWorker @AssistedInject constructor(
@@ -14,6 +15,7 @@ class ReminderWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val questionRepository: QuestionRepository,
     private val notificationHelper: NotificationHelper,
+    private val widgetRefresher: WidgetRefresher,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -23,6 +25,8 @@ class ReminderWorker @AssistedInject constructor(
         if (readyToResolve.isNotEmpty()) {
             notificationHelper.showReadyToResolveNotifications(applicationContext, readyToResolve)
         }
+        // Daily tick doubles as a widget freshness pass.
+        runCatching { widgetRefresher.refresh() }
 
         return Result.success()
     }

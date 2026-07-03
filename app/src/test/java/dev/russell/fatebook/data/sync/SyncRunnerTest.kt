@@ -37,6 +37,7 @@ class SyncRunnerTest {
     private lateinit var enqueuer: MutationEnqueuer
     private lateinit var repository: QuestionRepository
     private lateinit var runner: SyncRunner
+    private var widgetRefreshCount = 0
 
     @Before
     fun setup() {
@@ -64,6 +65,7 @@ class SyncRunnerTest {
             syncScheduler = noopScheduler,
             moshi = Moshi.Builder().build(),
         )
+        widgetRefreshCount = 0
         runner = SyncRunner(
             api = api,
             dao = pendingDao,
@@ -72,6 +74,7 @@ class SyncRunnerTest {
             transactor = transactor,
             enqueuer = enqueuer,
             prefs = prefs,
+            widgetRefresher = { widgetRefreshCount++ },
         )
     }
 
@@ -104,6 +107,15 @@ class SyncRunnerTest {
         assertThat(api.addForecastCalls[0].questionId).isEqualTo("q1")
         assertThat(api.addForecastCalls[0].forecast).isEqualTo(0.7)
         assertThat(pendingDao.stored).isEmpty()
+        // A successful drain refreshes the widget.
+        assertThat(widgetRefreshCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `empty queue does not touch the widget`() = runTest {
+        runner.run()
+
+        assertThat(widgetRefreshCount).isEqualTo(0)
     }
 
     @Test

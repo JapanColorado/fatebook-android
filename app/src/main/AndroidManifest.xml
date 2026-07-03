@@ -39,6 +39,18 @@
             android:name=".notification.ResolveActionReceiver"
             android:exported="false" />
 
+        <!-- Home-screen widget -->
+        <receiver
+            android:name=".widget.FatebookWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/fatebook_widget_info" />
+        </receiver>
+
         <!-- Disable default WorkManager initializer (Hilt provides its own) -->
         <provider
             android:name="androidx.startup.InitializationProvider"

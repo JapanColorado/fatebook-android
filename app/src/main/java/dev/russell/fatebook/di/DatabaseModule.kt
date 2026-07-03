@@ -11,6 +11,7 @@ import dagger.hilt.components.SingletonComponent
 import dev.russell.fatebook.data.local.FatebookDatabase
 import dev.russell.fatebook.data.local.CommentDao
 import dev.russell.fatebook.data.local.ForecastDao
+import dev.russell.fatebook.data.local.OptionDao
 import dev.russell.fatebook.data.local.PendingMutationDao
 import dev.russell.fatebook.data.local.QuestionDao
 import dev.russell.fatebook.data.local.Transactor
@@ -41,6 +42,10 @@ object DatabaseModule {
     @Provides
     fun provideCommentDao(database: FatebookDatabase): CommentDao =
         database.commentDao()
+
+    @Provides
+    fun provideOptionDao(database: FatebookDatabase): OptionDao =
+        database.optionDao()
 
     @Provides
     fun providePendingMutationDao(database: FatebookDatabase): PendingMutationDao =

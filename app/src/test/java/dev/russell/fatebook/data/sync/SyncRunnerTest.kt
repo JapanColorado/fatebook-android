@@ -9,6 +9,7 @@ import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.testutil.FakeCommentDao
 import dev.russell.fatebook.testutil.FakeFatebookApi
 import dev.russell.fatebook.testutil.FakeForecastDao
+import dev.russell.fatebook.testutil.FakeOptionDao
 import dev.russell.fatebook.testutil.FakePendingMutationDao
 import dev.russell.fatebook.testutil.FakeQuestionDao
 import dev.russell.fatebook.testutil.TestData
@@ -53,11 +54,13 @@ class SyncRunnerTest {
             dao = questionDao,
             forecastDao = forecastDao,
             commentDao = commentDao,
+            optionDao = FakeOptionDao(),
             pendingDao = pendingDao,
             prefs = prefs,
             transactor = transactor,
             enqueuer = enqueuer,
             syncScheduler = noopScheduler,
+            moshi = Moshi.Builder().build(),
         )
         runner = SyncRunner(
             api = api,

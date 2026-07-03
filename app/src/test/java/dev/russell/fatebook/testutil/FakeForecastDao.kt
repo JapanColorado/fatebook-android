@@ -17,6 +17,11 @@ class FakeForecastDao : ForecastDao {
 
     override fun observeAll(): Flow<List<ForecastEntity>> = _forecasts
 
+    override suspend fun getByQuestionId(questionId: String): List<ForecastEntity> =
+        _forecasts.value
+            .filter { it.questionId == questionId }
+            .sortedBy { it.createdAtEpochMs }
+
     override suspend fun upsertAll(forecasts: List<ForecastEntity>) {
         val current = _forecasts.value.toMutableList()
         current.addAll(forecasts)

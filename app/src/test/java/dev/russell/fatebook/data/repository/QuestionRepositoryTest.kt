@@ -8,12 +8,16 @@ import dev.russell.fatebook.data.local.Transactor
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.dto.ForecastDto
 import dev.russell.fatebook.data.remote.dto.QuestionsResponseDto
+import dev.russell.fatebook.data.remote.dto.TagDto
+import dev.russell.fatebook.data.remote.dto.UserDto
 import dev.russell.fatebook.data.sync.MutationEnqueuer
 import dev.russell.fatebook.data.sync.SyncScheduler
+import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.FakeCommentDao
 import dev.russell.fatebook.testutil.FakeFatebookApi
 import dev.russell.fatebook.testutil.FakeForecastDao
+import dev.russell.fatebook.testutil.FakeOptionDao
 import dev.russell.fatebook.testutil.FakePendingMutationDao
 import dev.russell.fatebook.testutil.FakeQuestionDao
 import dev.russell.fatebook.testutil.TestData
@@ -32,6 +36,7 @@ class QuestionRepositoryTest {
     private lateinit var dao: FakeQuestionDao
     private lateinit var forecastDao: FakeForecastDao
     private lateinit var commentDao: FakeCommentDao
+    private lateinit var optionDao: FakeOptionDao
     private lateinit var pendingDao: FakePendingMutationDao
     private lateinit var prefs: UserPreferences
     private lateinit var enqueuer: MutationEnqueuer
@@ -44,6 +49,7 @@ class QuestionRepositoryTest {
         dao = FakeQuestionDao()
         forecastDao = FakeForecastDao()
         commentDao = FakeCommentDao()
+        optionDao = FakeOptionDao()
         pendingDao = FakePendingMutationDao()
         prefs = mockk(relaxed = true)
         every { prefs.apiKey } returns "test-api-key"
@@ -56,11 +62,13 @@ class QuestionRepositoryTest {
             dao = dao,
             forecastDao = forecastDao,
             commentDao = commentDao,
+            optionDao = optionDao,
             pendingDao = pendingDao,
             prefs = prefs,
             transactor = transactor,
             enqueuer = enqueuer,
             syncScheduler = syncScheduler,
+            moshi = Moshi.Builder().build(),
         )
     }
 
@@ -590,5 +598,138 @@ class QuestionRepositoryTest {
         val count = repository.countReadyToResolve()
 
         assertThat(count).isEqualTo(1)
+    }
+
+    // --- options, tags, forecast metadata (schema v11) ---
+
+    @Test
+    fun `refresh stores question type and tags in the cache`() = runTest {
+        val dto = TestData.questionDto(
+            id = "q1",
+            questionType = "BINARY",
+            tags = listOf(TagDto(id = "t1", name = "work"), TagDto(id = "t2", name = "health")),
+        )
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto)) }
+
+        repository.refresh()
+
+        val entity = dao.storedQuestions.single()
+        assertThat(entity.questionType).isEqualTo("BINARY")
+        assertThat(entity.tagsJson).isEqualTo("""["work","health"]""")
+    }
+
+    @Test
+    fun `tags round-trip from cache to domain model`() = runTest {
+        val dto = TestData.questionDto(
+            id = "q1",
+            tags = listOf(TagDto(id = "t1", name = "work")),
+        )
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto)) }
+        repository.refresh()
+
+        repository.observeActive().test {
+            assertThat(awaitItem().single().tags).containsExactly("work")
+        }
+    }
+
+    @Test
+    fun `refresh stores forecast user metadata and optionId`() = runTest {
+        val dto = TestData.questionDto(
+            id = "q1",
+            forecasts = listOf(
+                ForecastDto(
+                    userId = "user1",
+                    forecast = 0.7,
+                    createdAt = "2020-01-02T00:00:00Z",
+                    hideForecastsUntil = null,
+                    user = UserDto(name = "Alice", id = "user1"),
+                    optionId = "opt1",
+                ),
+            ),
+        )
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto)) }
+
+        repository.refresh()
+
+        val forecast = forecastDao.storedForecasts.single()
+        assertThat(forecast.userId).isEqualTo("user1")
+        assertThat(forecast.userName).isEqualTo("Alice")
+        assertThat(forecast.optionId).isEqualTo("opt1")
+    }
+
+    @Test
+    fun `option latest forecast is derived from question-level forecasts by optionId`() = runTest {
+        // Binary-only filter still in place: mark as BINARY but include options —
+        // exercises the mapper independent of the (temporary) type filter.
+        val dto = TestData.questionDto(
+            id = "q1",
+            questionType = "BINARY",
+            options = listOf(
+                TestData.optionDto(id = "optA", text = "A"),
+                TestData.optionDto(id = "optB", text = "B"),
+            ),
+            forecasts = listOf(
+                ForecastDto("u1", 0.2, "2020-01-02T00:00:00Z", null, null, "optA"),
+                ForecastDto("u1", 0.6, "2020-01-03T00:00:00Z", null, null, "optA"),
+                ForecastDto("u1", 0.9, "2020-01-04T00:00:00Z", null, null, "optB"),
+            ),
+        )
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto)) }
+
+        repository.refresh()
+
+        val optionA = optionDao.storedOptions.single { it.id == "optA" }
+        val optionB = optionDao.storedOptions.single { it.id == "optB" }
+        assertThat(optionA.latestForecast).isEqualTo(0.6)
+        assertThat(optionB.latestForecast).isEqualTo(0.9)
+    }
+
+    @Test
+    fun `option-only forecasts do not become the question-level latest forecast`() = runTest {
+        val dto = TestData.questionDto(
+            id = "q1",
+            questionType = "BINARY",
+            forecasts = listOf(
+                ForecastDto("u1", 0.7, "2020-01-02T00:00:00Z", null, null, null),
+                ForecastDto("u1", 0.99, "2020-01-05T00:00:00Z", null, null, "optA"),
+            ),
+        )
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto)) }
+
+        repository.refresh()
+
+        assertThat(dao.storedQuestions.single().latestForecast).isEqualTo(0.7)
+    }
+
+    @Test
+    fun `observeActive joins options onto their question`() = runTest {
+        dao.upsertAll(listOf(TestData.questionEntity(id = "q1", questionType = "MULTIPLE_CHOICE")))
+        optionDao.upsertAll(
+            listOf(
+                TestData.optionEntity(id = "optA", questionId = "q1", text = "A"),
+                TestData.optionEntity(id = "optB", questionId = "q1", text = "B"),
+            ),
+        )
+
+        repository.observeActive().test {
+            val question = awaitItem().single()
+            assertThat(question.type).isEqualTo(QuestionType.MULTIPLE_CHOICE)
+            assertThat(question.options.map { it.text }).containsExactly("A", "B")
+        }
+    }
+
+    @Test
+    fun `refresh replaces stale option rows`() = runTest {
+        optionDao.upsertAll(listOf(TestData.optionEntity(id = "stale", questionId = "q1")))
+        val dto = TestData.questionDto(
+            id = "q1",
+            questionType = "BINARY",
+            options = listOf(TestData.optionDto(id = "fresh", text = "Fresh")),
+        )
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto)) }
+
+        repository.refresh()
+
+        assertThat(optionDao.storedOptions.map { it.id }).containsExactly("fresh")
     }
 }

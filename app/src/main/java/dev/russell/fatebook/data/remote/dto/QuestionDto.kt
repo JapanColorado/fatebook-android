@@ -25,6 +25,9 @@ data class QuestionDto(
     val sharedPublicly: Boolean? = null,
     val unlisted: Boolean? = null,
     val comments: List<CommentDto>? = null,
+    val options: List<OptionDto>? = null,
+    val tags: List<TagDto>? = null,
+    val exclusiveAnswers: Boolean? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -34,6 +37,25 @@ data class ForecastDto(
     @Json(name = "createdAt") val createdAt: String?,
     val hideForecastsUntil: String?,
     val user: UserDto? = null,
+    val optionId: String? = null,
+)
+
+// Option-level forecasts are ALSO present in the question-level `forecasts` array
+// (with optionId set), so we deliberately don't parse `options[].forecasts` —
+// doing so would double-count every multiple-choice forecast.
+@JsonClass(generateAdapter = true)
+data class OptionDto(
+    val id: String,
+    val text: String,
+    @Json(name = "createdAt") val createdAt: String? = null,
+    val resolution: String? = null,
+    val resolvedAt: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class TagDto(
+    val id: String? = null,
+    val name: String? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -48,6 +70,7 @@ data class CommentDto(
 @JsonClass(generateAdapter = true)
 data class UserDto(
     val name: String?,
+    val id: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

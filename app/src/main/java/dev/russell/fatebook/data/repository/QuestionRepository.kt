@@ -1,9 +1,13 @@
 package dev.russell.fatebook.data.repository
 
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
 import dev.russell.fatebook.data.local.CommentDao
 import dev.russell.fatebook.data.local.CommentEntity
 import dev.russell.fatebook.data.local.ForecastDao
 import dev.russell.fatebook.data.local.ForecastEntity
+import dev.russell.fatebook.data.local.OptionDao
+import dev.russell.fatebook.data.local.OptionEntity
 import dev.russell.fatebook.data.local.PendingMutationDao
 import dev.russell.fatebook.data.local.PendingMutationEntity
 import dev.russell.fatebook.data.local.QuestionDao
@@ -12,6 +16,8 @@ import dev.russell.fatebook.data.local.Transactor
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.FatebookApi
 import dev.russell.fatebook.data.remote.dto.CommentDto
+import dev.russell.fatebook.data.remote.dto.ForecastDto
+import dev.russell.fatebook.data.remote.dto.OptionDto
 import dev.russell.fatebook.data.remote.dto.QuestionDto
 import dev.russell.fatebook.data.sync.AddCommentPayload
 import dev.russell.fatebook.data.sync.AddForecastPayload
@@ -24,8 +30,12 @@ import dev.russell.fatebook.data.sync.SyncScheduler
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Forecast
 import dev.russell.fatebook.domain.model.Question
+import dev.russell.fatebook.domain.model.QuestionOption
+import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.time.LocalDate
@@ -43,26 +53,42 @@ class QuestionRepository @Inject constructor(
     private val commentDao: CommentDao,
     private val pendingDao: PendingMutationDao,
     private val prefs: UserPreferences,
+    private val optionDao: OptionDao,
     private val transactor: Transactor,
     private val enqueuer: MutationEnqueuer,
     private val syncScheduler: SyncScheduler,
+    moshi: Moshi,
 ) {
     private var nextCursor: Int? = null
+
+    private val tagsAdapter = moshi.adapter<List<String>>(
+        Types.newParameterizedType(List::class.java, String::class.java),
+    )
 
     private val QuestionDto.isBinary: Boolean
         get() = questionType == null || questionType == "BINARY"
 
+    /**
+     * Join question entities with their options. Binary questions have no option
+     * rows, so for a binary-only cache the joined output is identical on both
+     * source emissions — distinctUntilChanged collapses those.
+     */
+    private fun Flow<List<QuestionEntity>>.joinOptions(): Flow<List<Question>> =
+        combine(optionDao.observeAll()) { entities, options ->
+            val optionsByQuestion = options.groupBy { it.questionId }
+            entities.map { it.toDomain(optionsByQuestion[it.id].orEmpty()) }
+        }.distinctUntilChanged()
+
     /** Observe cached questions, mapped to domain models. */
     fun observeActive(): Flow<List<Question>> =
-        dao.observeActive().map { entities -> entities.map { it.toDomain() } }
+        dao.observeActive().joinOptions()
 
     fun observeReadyToResolve(): Flow<List<Question>> {
         val todayUtcMs = LocalDate.now()
             .atStartOfDay(ZoneOffset.UTC)
             .toInstant()
             .toEpochMilli()
-        return dao.observeReadyToResolve(todayUtcMs)
-            .map { entities -> entities.map { it.toDomain() } }
+        return dao.observeReadyToResolve(todayUtcMs).joinOptions()
     }
 
     suspend fun countReadyToResolve(): Int {
@@ -74,13 +100,16 @@ class QuestionRepository @Inject constructor(
     }
 
     fun observeResolved(): Flow<List<Question>> =
-        dao.observeResolved().map { entities -> entities.map { it.toDomain() } }
+        dao.observeResolved().joinOptions()
 
     fun observeAll(): Flow<List<Question>> =
-        dao.observeAll().map { entities -> entities.map { it.toDomain() } }
+        dao.observeAll().joinOptions()
 
     fun observeAllForecasts(): Flow<List<ForecastEntity>> =
         forecastDao.observeAll()
+
+    fun observeAllOptions(): Flow<List<OptionEntity>> =
+        optionDao.observeAll()
 
     /**
      * Fetch first page from API and merge into local cache as a single transaction.
@@ -135,9 +164,11 @@ class QuestionRepository @Inject constructor(
             for (dto in dtos) {
                 forecastDao.deleteByQuestionId(dto.id)
                 commentDao.deleteByQuestionId(dto.id)
+                optionDao.deleteByQuestionId(dto.id)
             }
             forecastDao.upsertAll(dtos.flatMap { it.toForecastEntities() })
             commentDao.upsertAll(dtos.flatMap { it.toCommentEntities() })
+            optionDao.upsertAll(dtos.flatMap { it.toOptionEntities() })
         }
     }
 
@@ -370,8 +401,10 @@ class QuestionRepository @Inject constructor(
     // --- Mappers ---
 
     private fun QuestionDto.toEntity(): QuestionEntity {
+        // Option-level forecasts (optionId != null) belong to their option, not
+        // the question-level latest forecast.
         val latest = forecasts
-            ?.filter { it.forecast != null }
+            ?.filter { it.forecast != null && it.optionId == null }
             ?.maxByOrNull { it.createdAt ?: "" }
 
         return QuestionEntity(
@@ -391,6 +424,9 @@ class QuestionRepository @Inject constructor(
             notes = notes,
             sharedPublicly = sharedPublicly ?: false,
             unlisted = unlisted ?: false,
+            questionType = questionType ?: "BINARY",
+            exclusiveAnswers = exclusiveAnswers != false,
+            tagsJson = tagsAdapter.toJson(tags?.mapNotNull { it.name } ?: emptyList()),
         )
     }
 
@@ -402,8 +438,31 @@ class QuestionRepository @Inject constructor(
                     questionId = id,
                     forecast = dto.forecast!!,
                     createdAtEpochMs = parseInstant(dto.createdAt!!).toEpochMilli(),
+                    userId = dto.userId,
+                    userName = dto.user?.name,
+                    optionId = dto.optionId,
                 )
             } ?: emptyList()
+
+    private fun QuestionDto.toOptionEntities(): List<OptionEntity> =
+        options?.map { option ->
+            // An option's latest forecast comes from the question-level forecasts
+            // array filtered by optionId (options[].forecasts is a duplicate view).
+            val latest = forecasts
+                ?.filter { it.optionId == option.id && it.forecast != null }
+                ?.maxByOrNull { it.createdAt ?: "" }
+            OptionEntity(
+                id = option.id,
+                questionId = id,
+                text = option.text,
+                createdAtEpochMs = option.createdAt?.let { parseInstant(it).toEpochMilli() }
+                    ?: parseInstant(createdAt).toEpochMilli(),
+                resolution = option.resolution,
+                resolvedAtEpochMs = option.resolvedAt?.let { parseInstant(it).toEpochMilli() },
+                latestForecast = latest?.forecast,
+                latestForecastAtEpochMs = latest?.createdAt?.let { parseInstant(it).toEpochMilli() },
+            )
+        } ?: emptyList()
 
     private fun CommentDto.toDomain(): Comment? {
         val body = comment ?: return null
@@ -440,7 +499,7 @@ class QuestionRepository @Inject constructor(
 
     private fun QuestionDto.toDomain(): Question {
         val latest = forecasts
-            ?.filter { it.forecast != null }
+            ?.filter { it.forecast != null && it.optionId == null }
             ?.maxByOrNull { it.createdAt ?: "" }
 
         return Question(
@@ -458,6 +517,8 @@ class QuestionRepository @Inject constructor(
                     userId = dto.userId ?: "",
                     forecast = dto.forecast,
                     createdAt = dto.createdAt?.let { parseInstant(it) } ?: Instant.EPOCH,
+                    userName = dto.user?.name,
+                    optionId = dto.optionId,
                 )
             } ?: emptyList(),
             url = url ?: "https://fatebook.io/q/$id",
@@ -468,10 +529,39 @@ class QuestionRepository @Inject constructor(
             sharedPublicly = sharedPublicly ?: false,
             unlisted = unlisted ?: false,
             comments = comments?.mapNotNull { it.toDomain() } ?: emptyList(),
+            type = QuestionType.fromApi(questionType),
+            exclusiveAnswers = exclusiveAnswers != false,
+            options = options?.map { it.toDomainOption(forecasts) } ?: emptyList(),
+            tags = tags?.mapNotNull { it.name } ?: emptyList(),
         )
     }
 
-    private fun QuestionEntity.toDomain(): Question {
+    private fun OptionDto.toDomainOption(
+        questionForecasts: List<ForecastDto>?,
+    ): QuestionOption {
+        val latest = questionForecasts
+            ?.filter { it.optionId == id && it.forecast != null }
+            ?.maxByOrNull { it.createdAt ?: "" }
+        return QuestionOption(
+            id = id,
+            text = text,
+            latestForecast = latest?.forecast,
+            latestForecastAt = latest?.createdAt?.let { parseInstant(it) },
+            resolution = resolution?.let { Resolution.fromApi(it) },
+            resolvedAt = resolvedAt?.let { parseInstant(it) },
+        )
+    }
+
+    private fun OptionEntity.toDomain(): QuestionOption = QuestionOption(
+        id = id,
+        text = text,
+        latestForecast = latestForecast,
+        latestForecastAt = latestForecastAtEpochMs?.let { Instant.ofEpochMilli(it) },
+        resolution = resolution?.let { Resolution.fromApi(it) },
+        resolvedAt = resolvedAtEpochMs?.let { Instant.ofEpochMilli(it) },
+    )
+
+    private fun QuestionEntity.toDomain(options: List<OptionEntity> = emptyList()): Question {
         return Question(
             id = id,
             title = title,
@@ -488,8 +578,19 @@ class QuestionRepository @Inject constructor(
             notes = notes,
             sharedPublicly = sharedPublicly,
             unlisted = unlisted,
+            type = QuestionType.fromApi(questionType),
+            exclusiveAnswers = exclusiveAnswers,
+            options = options.map { it.toDomain() },
+            tags = parseTags(tagsJson),
         )
     }
+
+    private fun parseTags(json: String): List<String> =
+        try {
+            tagsAdapter.fromJson(json) ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
 
     private fun parseInstant(dateStr: String): Instant {
         return try {

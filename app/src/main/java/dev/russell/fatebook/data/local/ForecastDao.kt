@@ -12,6 +12,9 @@ interface ForecastDao {
     @Query("SELECT * FROM forecasts")
     fun observeAll(): Flow<List<ForecastEntity>>
 
+    @Query("SELECT * FROM forecasts WHERE questionId = :questionId ORDER BY createdAtEpochMs ASC")
+    suspend fun getByQuestionId(questionId: String): List<ForecastEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(forecasts: List<ForecastEntity>)
 

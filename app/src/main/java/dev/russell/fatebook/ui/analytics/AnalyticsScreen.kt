@@ -425,24 +425,8 @@ private fun CalibrationChart(buckets: List<CalibrationBucket>) {
 }
 
 /**
- * Maps a day's forecast count to a heatmap cell color.
- *
- * TODO(user): implement me — this shapes how the activity heatmap "feels".
- *
- * Parameters:
- *   count    - number of forecasts made on this day (0 or more)
- *   maxCount - largest count across all visible days (≥ 1 when any day has activity)
- *   base     - theme primary color (use for populated cells)
- *   empty    - theme surfaceVariant color (use for count == 0)
- *
- * Trade-offs to consider:
- *   - Fixed thresholds (0 / 1-2 / 3-5 / 6-9 / 10+) give a stable legend across users,
- *     but a very active user maxes out quickly.
- *   - Relative-to-max (quartiles of count/maxCount) self-scales, but in a quiet month
- *     a single forecast will look dark.
- *   - Log-scaled alpha handles outliers smoothly but has no discrete legend.
- *
- * Return `empty` for count == 0, otherwise a tint of `base` (e.g., `base.copy(alpha = ...)`).
+ * Maps a day's forecast count to a heatmap cell color using fixed thresholds
+ * (stable intensity scale across users, GitHub-contribution-graph style).
  */
 private fun heatmapCellColor(count: Int, maxCount: Int, base: Color, empty: Color): Color = when {
     count <= 0 -> empty

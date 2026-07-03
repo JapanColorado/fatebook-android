@@ -6,6 +6,18 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import kotlin.math.roundToInt
 
+enum class QuestionType {
+    BINARY,
+    MULTIPLE_CHOICE,
+    QUANTITY,
+    ;
+
+    companion object {
+        fun fromApi(value: String?): QuestionType =
+            entries.firstOrNull { it.name == value } ?: BINARY
+    }
+}
+
 @Immutable
 data class Question(
     val id: String,
@@ -24,6 +36,10 @@ data class Question(
     val sharedPublicly: Boolean = false,
     val unlisted: Boolean = false,
     val comments: List<Comment> = emptyList(),
+    val type: QuestionType = QuestionType.BINARY,
+    val exclusiveAnswers: Boolean = true,
+    val options: List<QuestionOption> = emptyList(),
+    val tags: List<String> = emptyList(),
 ) {
     /** The resolve-by date (extracted from the UTC-midnight Instant the API stores). */
     val resolveByDate: LocalDate
@@ -43,10 +59,25 @@ data class Question(
 }
 
 @Immutable
+data class QuestionOption(
+    val id: String,
+    val text: String,
+    val latestForecast: Double? = null,
+    val latestForecastAt: Instant? = null,
+    val resolution: Resolution? = null,
+    val resolvedAt: Instant? = null,
+) {
+    val forecastPercent: Int?
+        get() = latestForecast?.let { (it * 100).roundToInt() }
+}
+
+@Immutable
 data class Forecast(
     val userId: String,
     val forecast: Double?,
     val createdAt: Instant,
+    val userName: String? = null,
+    val optionId: String? = null,
 )
 
 @Immutable

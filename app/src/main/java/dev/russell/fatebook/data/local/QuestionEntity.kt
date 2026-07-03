@@ -27,4 +27,7 @@ data class QuestionEntity(
     val notes: String? = null,
     val sharedPublicly: Boolean = false,
     val unlisted: Boolean = false,
+    val questionType: String = "BINARY",
+    val exclusiveAnswers: Boolean = true,
+    val tagsJson: String = "[]",
 )

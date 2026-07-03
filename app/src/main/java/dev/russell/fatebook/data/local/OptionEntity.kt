@@ -6,7 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(
-    tableName = "forecasts",
+    tableName = "options",
     foreignKeys = [ForeignKey(
         entity = QuestionEntity::class,
         parentColumns = ["id"],
@@ -16,12 +16,13 @@ import androidx.room.PrimaryKey
     )],
     indices = [Index("questionId")],
 )
-data class ForecastEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+data class OptionEntity(
+    @PrimaryKey val id: String, // server option id
     val questionId: String,
-    val forecast: Double,
+    val text: String,
     val createdAtEpochMs: Long,
-    val userId: String? = null,
-    val userName: String? = null,
-    val optionId: String? = null,
+    val resolution: String?, // YES / NO / AMBIGUOUS / null, per option
+    val resolvedAtEpochMs: Long? = null,
+    val latestForecast: Double? = null,
+    val latestForecastAtEpochMs: Long? = null,
 )

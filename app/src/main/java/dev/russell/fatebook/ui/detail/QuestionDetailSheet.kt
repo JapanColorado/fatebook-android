@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Comment
+import dev.russell.fatebook.domain.model.Forecast
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
@@ -60,8 +61,10 @@ import dev.russell.fatebook.ui.theme.ResolveNo
 import dev.russell.fatebook.ui.theme.ResolveYes
 import dev.russell.fatebook.ui.theme.forecastColor
 import java.time.LocalDate
+import java.time.Period
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,6 +79,7 @@ fun QuestionDetailSheet(
     onUpdateOptionForecast: () -> Unit = {},
     onResolveMcExclusive: (String) -> Unit = {},
     onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit = { _, _ -> },
+    onPushResolveBy: (Period) -> Unit = {},
     onEnterEditMode: () -> Unit,
     onEditTitleChange: (String) -> Unit,
     onEditResolveByChange: (LocalDate) -> Unit,
@@ -126,6 +130,7 @@ fun QuestionDetailSheet(
                     onUpdateOptionForecast = onUpdateOptionForecast,
                     onResolveMcExclusive = onResolveMcExclusive,
                     onResolveMcOption = onResolveMcOption,
+                    onPushResolveBy = onPushResolveBy,
                     onEnterEditMode = onEnterEditMode,
                     onDeleteClick = onDeleteClick,
                     onToggleSharedPublicly = onToggleSharedPublicly,
@@ -180,6 +185,7 @@ private fun ColumnScope.ReadModeContent(
     onUpdateOptionForecast: () -> Unit,
     onResolveMcExclusive: (String) -> Unit,
     onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit,
+    onPushResolveBy: (Period) -> Unit,
     onEnterEditMode: () -> Unit,
     onDeleteClick: () -> Unit,
     onToggleSharedPublicly: () -> Unit,
@@ -367,6 +373,37 @@ private fun ColumnScope.ReadModeContent(
         }
     }
 
+    // Quick action for overdue questions: not ready to call it yet? Push the
+    // deadline instead of resolving.
+    if (question.isReadyToResolve && question.type != QuestionType.QUANTITY) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "Not ready to resolve? Push the date:",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedButton(
+                onClick = { onPushResolveBy(Period.ofWeeks(1)) },
+                modifier = Modifier.weight(1f),
+                enabled = !detailState.isSaving,
+            ) {
+                Text("+1 week")
+            }
+            OutlinedButton(
+                onClick = { onPushResolveBy(Period.ofMonths(1)) },
+                modifier = Modifier.weight(1f),
+                enabled = !detailState.isSaving,
+            ) {
+                Text("+1 month")
+            }
+        }
+    }
+
     Spacer(modifier = Modifier.height(16.dp))
     HorizontalDivider()
     Spacer(modifier = Modifier.height(12.dp))
@@ -416,6 +453,29 @@ private fun ColumnScope.ReadModeContent(
                 text = if (question.sharedPublicly) "Public" else "Private",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    // Forecast history — only interesting when someone besides you has
+    // forecast (shared questions). Server-scrubbed hidden forecasts arrive
+    // with a null value and are skipped.
+    val visibleHistory = detailState.forecastHistory.filter { it.forecast != null }
+    if (visibleHistory.map { it.userId }.distinct().size > 1) {
+        Spacer(modifier = Modifier.height(12.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "Forecast history",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        val optionTextById = question.options.associate { it.id to it.text }
+        visibleHistory.forEach { forecast ->
+            ForecastHistoryRow(
+                forecast = forecast,
+                optionText = forecast.optionId?.let { optionTextById[it] },
+                dateFormatter = dateFormatter,
             )
         }
     }
@@ -724,6 +784,45 @@ private fun EditModeContent(
                 Text("Save")
             }
         }
+    }
+}
+
+@Composable
+private fun ForecastHistoryRow(
+    forecast: Forecast,
+    optionText: String?,
+    dateFormatter: DateTimeFormatter,
+) {
+    val pct = ((forecast.forecast ?: 0.0) * 100).roundToInt()
+    val name = forecast.userName ?: "Unknown"
+    val dateText = forecast.createdAt
+        .atZone(ZoneId.systemDefault())
+        .format(dateFormatter)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (optionText != null) "$name · $optionText" else name,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "$pct%",
+            style = MaterialTheme.typography.bodySmall,
+            color = forecastColor(forecast.forecast ?: 0.0),
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = "  $dateText",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

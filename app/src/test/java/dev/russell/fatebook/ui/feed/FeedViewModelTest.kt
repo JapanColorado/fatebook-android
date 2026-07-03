@@ -586,6 +586,57 @@ class FeedViewModelTest {
         assertThat(vm.uiState.value.questions.map { it.id }).containsExactly("q1", "q2")
     }
 
+    // --- forecast history + push resolve date ---
+
+    @Test
+    fun `showDetailSheet loads forecast history`() = runTest {
+        val question = TestData.question(id = "q1")
+        val history = listOf(
+            dev.russell.fatebook.domain.model.Forecast(
+                userId = "u1",
+                forecast = 0.6,
+                createdAt = java.time.Instant.parse("2024-01-01T00:00:00Z"),
+                userName = "Alice",
+            ),
+        )
+        coEvery { repository.getForecastsForQuestion("q1") } returns history
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.detail.forecastHistory).isEqualTo(history)
+    }
+
+    @Test
+    fun `pushResolveBy edits the resolve date forward from today`() = runTest {
+        val question = TestData.question(id = "q1")
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.pushResolveBy(java.time.Period.ofWeeks(1))
+        advanceUntilIdle()
+
+        coVerify {
+            repository.editQuestion(
+                questionId = "q1",
+                resolveBy = java.time.LocalDate.now().plusWeeks(1),
+            )
+        }
+        assertThat(vm.uiState.value.detail.question).isNull()
+    }
+
     // --- sort ---
 
     @Test

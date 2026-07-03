@@ -8,6 +8,7 @@ import dev.russell.fatebook.data.network.NetworkMonitor
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Comment
+import dev.russell.fatebook.domain.model.Forecast
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.Resolution
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -64,6 +65,7 @@ data class DetailSheetState(
     val editNotes: String = "",
     val comments: List<Comment> = emptyList(),
     val isLoadingComments: Boolean = false,
+    val forecastHistory: List<Forecast> = emptyList(),
     val commentText: String = "",
     val isAddingComment: Boolean = false,
     val showDeleteConfirmation: Boolean = false,
@@ -254,9 +256,11 @@ class FeedViewModel @Inject constructor(
             _detail.update { it.copy(isLoadingComments = true) }
             try {
                 val comments = repository.getCommentsForQuestion(question.id)
+                val history = repository.getForecastsForQuestion(question.id)
                 _detail.update {
                     it.copy(
                         comments = comments,
+                        forecastHistory = history,
                         isLoadingComments = false,
                     )
                 }
@@ -405,6 +409,27 @@ class FeedViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to update sharing")
+            }
+        }
+    }
+
+    /**
+     * Quick action for overdue questions: bump the resolve-by date forward
+     * from TODAY (an overdue date plus a week could still be in the past).
+     */
+    fun pushResolveBy(period: java.time.Period) {
+        val question = _detail.value.question ?: return
+        viewModelScope.launch {
+            _detail.update { it.copy(isSaving = true) }
+            try {
+                repository.editQuestion(
+                    questionId = question.id,
+                    resolveBy = LocalDate.now().plus(period),
+                )
+                _detail.value = DetailSheetState()
+            } catch (e: Exception) {
+                _error.value = classifyError(e, "Failed to update resolve date")
+                _detail.update { it.copy(isSaving = false) }
             }
         }
     }

@@ -806,6 +806,35 @@ class QuestionRepositoryTest {
         assertThat(payload.tags).containsExactly("work", "health").inOrder()
     }
 
+    @Test
+    fun `getForecastsForQuestion returns domain forecasts with user metadata`() = runTest {
+        forecastDao.upsertAll(
+            listOf(
+                dev.russell.fatebook.data.local.ForecastEntity(
+                    questionId = "q1",
+                    forecast = 0.6,
+                    createdAtEpochMs = 1000L,
+                    userId = "u1",
+                    userName = "Alice",
+                    optionId = "optA",
+                ),
+                dev.russell.fatebook.data.local.ForecastEntity(
+                    questionId = "other",
+                    forecast = 0.9,
+                    createdAtEpochMs = 2000L,
+                ),
+            ),
+        )
+
+        val forecasts = repository.getForecastsForQuestion("q1")
+
+        val forecast = forecasts.single()
+        assertThat(forecast.userName).isEqualTo("Alice")
+        assertThat(forecast.userId).isEqualTo("u1")
+        assertThat(forecast.optionId).isEqualTo("optA")
+        assertThat(forecast.forecast).isEqualTo(0.6)
+    }
+
     // --- multiple-choice mutations ---
 
     @Test

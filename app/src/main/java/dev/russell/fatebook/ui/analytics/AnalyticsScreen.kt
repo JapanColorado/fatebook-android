@@ -146,6 +146,14 @@ fun AnalyticsScreenContent(
                 )
                 CalibrationChart(buckets = state.calibrationBuckets)
 
+                if (state.monthlyBrier.isNotEmpty()) {
+                    Text(
+                        text = "Score over time",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    ScoreOverTimeChart(monthly = state.monthlyBrier)
+                }
+
                 Text(
                     text = "Activity",
                     style = MaterialTheme.typography.titleMedium,
@@ -350,6 +358,110 @@ private fun StreakChip(
             )
         },
     )
+}
+
+private val monthLabelFormatter = java.time.format.DateTimeFormatter.ofPattern("MMM")
+
+/**
+ * Brier score by resolution month: polyline + points, dashed reference line at
+ * 0.5 (an always-50% forecaster's score). Lower is better.
+ */
+@Composable
+private fun ScoreOverTimeChart(monthly: List<MonthlyBrier>) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val outlineColor = MaterialTheme.colorScheme.outline
+    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = TextStyle(fontSize = 10.sp, color = onSurfaceColor)
+
+    val chartDescription = remember(monthly) {
+        buildString {
+            append("Brier score by month, lower is better. ")
+            monthly.forEach { m ->
+                append("${m.month.format(monthLabelFormatter)} ${m.month.year}: ")
+                append("%.2f".format(m.score))
+                append(" over ${m.count} ")
+                append(if (m.count == 1) "question. " else "questions. ")
+            }
+        }
+    }
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1.6f)
+            .semantics { contentDescription = chartDescription },
+    ) {
+        val leftPad = 34.dp.toPx()
+        val bottomPad = 18.dp.toPx()
+        val topPad = 8.dp.toPx()
+        val chartWidth = size.width - leftPad
+        val chartHeight = size.height - bottomPad - topPad
+
+        // Y range: from 0 up to at least the 0.5 baseline so it's always visible.
+        val yMax = (monthly.maxOf { it.score } * 1.15).coerceAtLeast(0.55)
+        fun yFor(score: Double): Float =
+            topPad + (chartHeight * (1 - (score / yMax))).toFloat()
+        fun xFor(index: Int): Float =
+            if (monthly.size == 1) leftPad + chartWidth / 2
+            else leftPad + chartWidth * index / (monthly.size - 1).toFloat()
+
+        // Axes
+        drawLine(outlineColor, Offset(leftPad, topPad), Offset(leftPad, topPad + chartHeight))
+        drawLine(
+            outlineColor,
+            Offset(leftPad, topPad + chartHeight),
+            Offset(size.width, topPad + chartHeight),
+        )
+
+        // Y labels: 0 and yMax
+        val zeroLabel = textMeasurer.measure("0", labelStyle)
+        drawText(zeroLabel, topLeft = Offset(leftPad - zeroLabel.size.width - 4.dp.toPx(), topPad + chartHeight - zeroLabel.size.height / 2))
+        val maxLabel = textMeasurer.measure("%.1f".format(yMax), labelStyle)
+        drawText(maxLabel, topLeft = Offset(leftPad - maxLabel.size.width - 4.dp.toPx(), topPad - maxLabel.size.height / 2))
+
+        // Dashed 0.5 reference (always-50% forecaster)
+        val dash = PathEffect.dashPathEffect(floatArrayOf(8f, 8f))
+        drawLine(
+            color = outlineColor,
+            start = Offset(leftPad, yFor(0.5)),
+            end = Offset(size.width, yFor(0.5)),
+            pathEffect = dash,
+        )
+
+        // Polyline + points
+        for (i in 1 until monthly.size) {
+            drawLine(
+                color = primaryColor,
+                start = Offset(xFor(i - 1), yFor(monthly[i - 1].score)),
+                end = Offset(xFor(i), yFor(monthly[i].score)),
+                strokeWidth = 2.dp.toPx(),
+            )
+        }
+        monthly.forEachIndexed { i, m ->
+            drawCircle(primaryColor, radius = 3.dp.toPx(), center = Offset(xFor(i), yFor(m.score)))
+        }
+
+        // X labels: first, middle, last month (avoids crowding)
+        val labelIndices = when {
+            monthly.size <= 3 -> monthly.indices.toList()
+            else -> listOf(0, monthly.size / 2, monthly.size - 1)
+        }
+        for (i in labelIndices) {
+            val label = textMeasurer.measure(
+                monthly[i].month.format(monthLabelFormatter),
+                labelStyle,
+            )
+            drawText(
+                label,
+                topLeft = Offset(
+                    (xFor(i) - label.size.width / 2)
+                        .coerceIn(leftPad, size.width - label.size.width),
+                    topPad + chartHeight + 4.dp.toPx(),
+                ),
+            )
+        }
+    }
 }
 
 /** Number of 5%-wide bar slots spanning the folded 50-100% x-axis. */

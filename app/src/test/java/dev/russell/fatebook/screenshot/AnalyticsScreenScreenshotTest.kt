@@ -6,7 +6,9 @@ import dev.russell.fatebook.ui.analytics.AnalyticsScreenContent
 import dev.russell.fatebook.ui.analytics.AnalyticsUiState
 import dev.russell.fatebook.ui.analytics.CalibrationBucket
 import dev.russell.fatebook.ui.analytics.DayActivity
+import dev.russell.fatebook.ui.analytics.MonthlyBrier
 import dev.russell.fatebook.ui.analytics.TagBrierEntry
+import java.time.YearMonth
 import dev.russell.fatebook.ui.theme.FatebookTheme
 import org.junit.Rule
 import org.junit.Test
@@ -77,6 +79,14 @@ class AnalyticsScreenScreenshotTest {
                             TagBrierEntry(tag = "work", brier = 0.12, questionCount = 8),
                             TagBrierEntry(tag = "health", brier = 0.31, questionCount = 3),
                             TagBrierEntry(tag = "long-shot", brier = 0.55, questionCount = 1),
+                        ),
+                        monthlyBrier = listOf(
+                            MonthlyBrier(YearMonth.of(2025, 9), 0.42, 3),
+                            MonthlyBrier(YearMonth.of(2025, 10), 0.35, 5),
+                            MonthlyBrier(YearMonth.of(2025, 11), 0.51, 2),
+                            MonthlyBrier(YearMonth.of(2025, 12), 0.22, 7),
+                            MonthlyBrier(YearMonth.of(2026, 1), 0.18, 4),
+                            MonthlyBrier(YearMonth.of(2026, 2), 0.27, 6),
                         ),
                     ),
                 )

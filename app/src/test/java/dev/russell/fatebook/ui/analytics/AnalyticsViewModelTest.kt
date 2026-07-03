@@ -279,6 +279,160 @@ class AnalyticsViewModelTest {
         ).isEmpty()
     }
 
+    // --- multiple-choice option scoring (website parity) ---
+
+    private fun optionForecast(
+        questionId: String,
+        optionId: String,
+        value: Double,
+        createdAtMs: Long = base.toEpochMilli(),
+    ) = ForecastEntity(
+        questionId = questionId,
+        forecast = value,
+        createdAtEpochMs = createdAtMs,
+        optionId = optionId,
+    )
+
+    @Test
+    fun `resolved MC options are scored as independent binary events`() {
+        // Option A: 0.8 held the whole window, resolved YES -> 0.08.
+        // Option B: 0.8, resolved NO -> brier(0.8 vs NO) = 2*(0.8)^2 = 1.28.
+        // Overall = mean(0.08, 1.28) = 0.68. Option C unresolved -> excluded.
+        val mc = TestData.question(
+            id = "mc1",
+            type = QuestionType.MULTIPLE_CHOICE,
+            resolved = false,
+            createdAt = base,
+            options = listOf(
+                TestData.questionOption(
+                    id = "optA",
+                    resolution = Resolution.YES,
+                    resolvedAt = base.plusMillis(10 * dayMs),
+                ),
+                TestData.questionOption(
+                    id = "optB",
+                    resolution = Resolution.NO,
+                    resolvedAt = base.plusMillis(10 * dayMs),
+                ),
+                TestData.questionOption(id = "optC", resolution = null),
+            ),
+        )
+        val forecasts = mapOf(
+            "mc1" to listOf(
+                optionForecast("mc1", "optA", 0.8),
+                optionForecast("mc1", "optB", 0.8),
+                optionForecast("mc1", "optC", 0.5),
+            ),
+        )
+
+        val items = AnalyticsViewModel.buildScoringInputs(listOf(mc), forecasts)
+
+        assertThat(items).hasSize(2)
+        val score = AnalyticsViewModel.computeBrierScore(items)
+        assertThat(score).isWithin(0.0001).of(0.68)
+        // Calibration pools the two scored option forecasts.
+        assertThat(AnalyticsViewModel.countScoredForecasts(items)).isEqualTo(2)
+    }
+
+    @Test
+    fun `MC option calibration counts a NO-resolved 80 percent forecast as a miss`() {
+        val mc = TestData.question(
+            id = "mc1",
+            type = QuestionType.MULTIPLE_CHOICE,
+            createdAt = base,
+            options = listOf(
+                TestData.questionOption(
+                    id = "optA",
+                    resolution = Resolution.NO,
+                    resolvedAt = base.plusMillis(dayMs),
+                ),
+            ),
+        )
+        val forecasts = mapOf("mc1" to listOf(optionForecast("mc1", "optA", 0.8)))
+
+        val buckets = AnalyticsViewModel.computeCalibrationBuckets(
+            AnalyticsViewModel.buildScoringInputs(listOf(mc), forecasts),
+        )
+
+        val bucket = buckets.single()
+        assertThat(bucket.rangeLabel).isEqualTo("80-85%")
+        assertThat(bucket.actualRate).isEqualTo(0f)
+    }
+
+    @Test
+    fun `binary items ignore stray option-level forecasts`() {
+        val q = resolvedQuestion("q1", Resolution.YES)
+        val forecasts = mapOf(
+            "q1" to listOf(
+                forecast("q1", 0.8),
+                optionForecast("q1", "ghost", 0.1),
+            ),
+        )
+
+        val items = AnalyticsViewModel.buildScoringInputs(listOf(q), forecasts)
+
+        assertThat(items.single().rawForecasts).containsExactly(0.8)
+    }
+
+    // --- monthly Brier ---
+
+    @Test
+    fun `monthly brier buckets by resolution month and keeps the last 12`() {
+        val zone = java.time.ZoneOffset.UTC
+        // 14 months of questions, one per month, resolved on the 15th.
+        val questions = (0 until 14).map { i ->
+            resolvedQuestion(
+                id = "q$i",
+                resolution = Resolution.YES,
+                createdAt = Instant.parse("2023-01-01T00:00:00Z").plusMillis(i * 31L * dayMs),
+                resolvedAt = Instant.parse("2023-01-15T00:00:00Z").plusMillis(i * 31L * dayMs),
+            )
+        }
+        val forecasts = questions.associate { q ->
+            q.id to listOf(forecast(q.id, 0.8, q.createdAt.toEpochMilli()))
+        }
+
+        val monthly = AnalyticsViewModel.computeMonthlyBrier(
+            AnalyticsViewModel.buildScoringInputs(questions, forecasts),
+            zone,
+        )
+
+        assertThat(monthly).hasSize(12)
+        assertThat(monthly.first().month).isGreaterThan(monthly.first().month.minusMonths(1))
+        assertThat(monthly.map { it.month }).isInOrder()
+        // 0.8 held from creation to a YES resolution -> 0.08 every month.
+        monthly.forEach { assertThat(it.score).isWithin(0.0001).of(0.08) }
+        monthly.forEach { assertThat(it.count).isEqualTo(1) }
+    }
+
+    @Test
+    fun `monthly brier skips months without resolutions`() {
+        val questions = listOf(
+            resolvedQuestion(
+                "q1",
+                Resolution.YES,
+                createdAt = Instant.parse("2024-01-01T00:00:00Z"),
+                resolvedAt = Instant.parse("2024-01-10T00:00:00Z"),
+            ),
+            resolvedQuestion(
+                "q2",
+                Resolution.YES,
+                createdAt = Instant.parse("2024-03-01T00:00:00Z"),
+                resolvedAt = Instant.parse("2024-03-10T00:00:00Z"),
+            ),
+        )
+        val forecasts = questions.associate { q ->
+            q.id to listOf(forecast(q.id, 0.9, q.createdAt.toEpochMilli()))
+        }
+
+        val monthly = AnalyticsViewModel.computeMonthlyBrier(
+            AnalyticsViewModel.buildScoringInputs(questions, forecasts),
+            java.time.ZoneOffset.UTC,
+        )
+
+        assertThat(monthly.map { it.month.toString() }).containsExactly("2024-01", "2024-03").inOrder()
+    }
+
     @Test
     fun `brier score is null when no forecasts`() {
         val score = AnalyticsViewModel.computeBrierScore(emptyList(), emptyMap())

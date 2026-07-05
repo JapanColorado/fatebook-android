@@ -10,7 +10,9 @@ import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Forecast
 import dev.russell.fatebook.domain.model.Question
+import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
+import dev.russell.fatebook.ui.components.PieChartMath
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -27,8 +29,21 @@ import retrofit2.HttpException
 import java.io.IOException
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 enum class FeedFilter { ACTIVE, READY_TO_RESOLVE, RESOLVED }
+
+/**
+ * Exclusive multiple-choice questions that are still open for forecasting use
+ * the interactive pie editor (options must sum to 100%). Non-exclusive MC
+ * options are independent probabilities, so they keep per-option sliders.
+ */
+val Question.isPieEditable: Boolean
+    get() = type == QuestionType.MULTIPLE_CHOICE &&
+        exclusiveAnswers &&
+        options.size >= 2 &&
+        options.all { it.resolution == null } &&
+        !resolved && !isReadyToResolve && !isForecastHidden
 
 enum class FeedSort {
     /** Soonest resolve-by date first (resolved filter shows newest first). */
@@ -56,9 +71,14 @@ data class DetailSheetState(
     val question: Question? = null,
     val forecastSliderValue: Float = 0.5f,
     val isUpdatingForecast: Boolean = false,
-    // Multiple choice: which option row is expanded for forecasting, if any.
+    // Multiple choice (non-exclusive): which option row is expanded for
+    // forecasting, if any.
     val expandedOptionId: String? = null,
     val optionSliderValue: Float = 0.5f,
+    // Multiple choice (exclusive): pie-editor fractions aligned with
+    // question.options, always summing to 1. Empty when the pie editor
+    // doesn't apply (non-MC, non-exclusive, resolved, ...).
+    val pieValues: List<Float> = emptyList(),
     val isEditing: Boolean = false,
     val editTitle: String = "",
     val editResolveBy: LocalDate? = null,
@@ -251,6 +271,11 @@ class FeedViewModel @Inject constructor(
         _detail.value = DetailSheetState(
             question = question,
             forecastSliderValue = question.yourLatestForecast?.toFloat() ?: 0.5f,
+            pieValues = if (question.isPieEditable) {
+                PieChartMath.initialValues(question.options.map { it.latestForecast })
+            } else {
+                emptyList()
+            },
         )
         viewModelScope.launch {
             _detail.update { it.copy(isLoadingComments = true) }
@@ -474,6 +499,37 @@ class FeedViewModel @Inject constructor(
                 _detail.value = DetailSheetState()
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to update forecast")
+                _detail.update { it.copy(isUpdatingForecast = false) }
+            }
+        }
+    }
+
+    /** New pie-editor fractions from a drag; aligned with question.options. */
+    fun setPieValues(values: List<Float>) {
+        _detail.update { it.copy(pieValues = values) }
+    }
+
+    /**
+     * Submit the pie editor's values: one forecast per option whose value
+     * changed (as a whole percent) from its current latest forecast, so
+     * untouched options don't get duplicate forecasts.
+     */
+    fun updatePieForecasts() {
+        val state = _detail.value
+        val question = state.question ?: return
+        if (state.pieValues.size != question.options.size) return
+        viewModelScope.launch {
+            _detail.update { it.copy(isUpdatingForecast = true) }
+            try {
+                question.options.zip(state.pieValues).forEach { (option, value) ->
+                    val rounded = (value * 100).roundToInt() / 100.0
+                    if (PieChartMath.differsAsPercent(option.latestForecast, rounded)) {
+                        repository.addForecast(question.id, rounded, option.id)
+                    }
+                }
+                _detail.value = DetailSheetState()
+            } catch (e: Exception) {
+                _error.value = classifyError(e, "Failed to update forecasts")
                 _detail.update { it.copy(isUpdatingForecast = false) }
             }
         }

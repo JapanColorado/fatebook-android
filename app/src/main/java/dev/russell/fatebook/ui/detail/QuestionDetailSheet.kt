@@ -2,8 +2,10 @@ package dev.russell.fatebook.ui.detail
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -53,13 +56,18 @@ import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.ui.components.DatePickerField
+import dev.russell.fatebook.ui.components.PieChartMath
+import dev.russell.fatebook.ui.components.PieSegment
+import dev.russell.fatebook.ui.components.ProbabilityPieChart
 import dev.russell.fatebook.ui.components.ProbabilitySlider
 import dev.russell.fatebook.ui.components.TagChipRow
 import dev.russell.fatebook.ui.feed.DetailSheetState
+import dev.russell.fatebook.ui.feed.isPieEditable
 import dev.russell.fatebook.ui.theme.ResolveAmbiguous
 import dev.russell.fatebook.ui.theme.ResolveNo
 import dev.russell.fatebook.ui.theme.ResolveYes
 import dev.russell.fatebook.ui.theme.forecastColor
+import dev.russell.fatebook.ui.theme.mcOptionColor
 import java.time.LocalDate
 import java.time.Period
 import java.time.ZoneId
@@ -77,6 +85,8 @@ fun QuestionDetailSheet(
     onToggleOptionExpanded: (String) -> Unit = {},
     onOptionSliderChange: (Float) -> Unit = {},
     onUpdateOptionForecast: () -> Unit = {},
+    onPieValuesChange: (List<Float>) -> Unit = {},
+    onUpdatePieForecasts: () -> Unit = {},
     onResolveMcExclusive: (String) -> Unit = {},
     onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit = { _, _ -> },
     onPushResolveBy: (Period) -> Unit = {},
@@ -128,6 +138,8 @@ fun QuestionDetailSheet(
                     onToggleOptionExpanded = onToggleOptionExpanded,
                     onOptionSliderChange = onOptionSliderChange,
                     onUpdateOptionForecast = onUpdateOptionForecast,
+                    onPieValuesChange = onPieValuesChange,
+                    onUpdatePieForecasts = onUpdatePieForecasts,
                     onResolveMcExclusive = onResolveMcExclusive,
                     onResolveMcOption = onResolveMcOption,
                     onPushResolveBy = onPushResolveBy,
@@ -183,6 +195,8 @@ private fun ColumnScope.ReadModeContent(
     onToggleOptionExpanded: (String) -> Unit,
     onOptionSliderChange: (Float) -> Unit,
     onUpdateOptionForecast: () -> Unit,
+    onPieValuesChange: (List<Float>) -> Unit,
+    onUpdatePieForecasts: () -> Unit,
     onResolveMcExclusive: (String) -> Unit,
     onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit,
     onPushResolveBy: (Period) -> Unit,
@@ -284,6 +298,8 @@ private fun ColumnScope.ReadModeContent(
             onToggleOptionExpanded = onToggleOptionExpanded,
             onOptionSliderChange = onOptionSliderChange,
             onUpdateOptionForecast = onUpdateOptionForecast,
+            onPieValuesChange = onPieValuesChange,
+            onUpdatePieForecasts = onUpdatePieForecasts,
             onResolveMcExclusive = onResolveMcExclusive,
             onResolveMcOption = onResolveMcOption,
         )
@@ -545,8 +561,11 @@ private fun ColumnScope.ReadModeContent(
 /**
  * Option list for multiple-choice questions.
  *
- * Active question: each unresolved option row is tappable and expands a
- * probability slider for forecasting that option (one at a time).
+ * Active exclusive question: an interactive pie chart — dragging a boundary
+ * between two slices transfers probability between them, so the options
+ * always sum to 100%; one button submits all changed options.
+ * Active non-exclusive question: each unresolved option row is tappable and
+ * expands a probability slider for forecasting that option (one at a time).
  * Ready to resolve: exclusive questions get one resolve button per option plus
  * Other/Ambiguous; non-exclusive questions get YES/NO buttons per option.
  */
@@ -557,6 +576,8 @@ private fun MultipleChoiceSection(
     onToggleOptionExpanded: (String) -> Unit,
     onOptionSliderChange: (Float) -> Unit,
     onUpdateOptionForecast: () -> Unit,
+    onPieValuesChange: (List<Float>) -> Unit,
+    onUpdatePieForecasts: () -> Unit,
     onResolveMcExclusive: (String) -> Unit,
     onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit,
 ) {
@@ -568,6 +589,16 @@ private fun MultipleChoiceSection(
         style = MaterialTheme.typography.titleSmall,
     )
     Spacer(modifier = Modifier.height(4.dp))
+
+    if (question.isPieEditable && detailState.pieValues.size == question.options.size) {
+        PieForecastEditor(
+            question = question,
+            detailState = detailState,
+            onPieValuesChange = onPieValuesChange,
+            onUpdatePieForecasts = onUpdatePieForecasts,
+        )
+        return
+    }
 
     question.options.forEach { option ->
         val expanded = detailState.expandedOptionId == option.id
@@ -705,6 +736,82 @@ private fun MultipleChoiceSection(
             enabled = !detailState.isResolving,
         ) {
             Text("Resolve all Ambiguous")
+        }
+    }
+}
+
+/**
+ * Interactive pie editor for an active exclusive multiple-choice question.
+ * Legend rows show each option with its live percent; a single button
+ * submits every option whose value changed.
+ */
+@Composable
+private fun PieForecastEditor(
+    question: Question,
+    detailState: DetailSheetState,
+    onPieValuesChange: (List<Float>) -> Unit,
+    onUpdatePieForecasts: () -> Unit,
+) {
+    val percents = PieChartMath.displayPercents(detailState.pieValues)
+
+    Spacer(modifier = Modifier.height(4.dp))
+    ProbabilityPieChart(
+        segments = question.options.mapIndexed { i, option ->
+            PieSegment(id = option.id, label = option.text, value = detailState.pieValues[i])
+        },
+        onValuesChange = onPieValuesChange,
+        enabled = !detailState.isUpdatingForecast,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+
+    question.options.forEachIndexed { i, option ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .background(mcOptionColor(i), CircleShape),
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = option.text,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "${percents[i]}%",
+                color = mcOptionColor(i),
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = "Drag the handles between slices to adjust — options always total 100%.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+    Button(
+        onClick = onUpdatePieForecasts,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = !detailState.isUpdatingForecast,
+    ) {
+        if (detailState.isUpdatingForecast) {
+            CircularProgressIndicator(
+                modifier = Modifier.height(20.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            Text("Update Forecasts")
         }
     }
 }

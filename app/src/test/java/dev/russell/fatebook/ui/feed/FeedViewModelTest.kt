@@ -764,6 +764,84 @@ class FeedViewModelTest {
     }
 
     @Test
+    fun `showDetailSheet seeds pie values for an active exclusive MC question`() = runTest {
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        // optA has 0.4 forecast; optB is unforecast and absorbs the leftover.
+        vm.showDetailSheet(mcQuestion())
+        advanceUntilIdle()
+
+        val pie = vm.uiState.value.detail.pieValues
+        assertThat(pie).hasSize(2)
+        assertThat(pie[0]).isWithin(0.001f).of(0.4f)
+        assertThat(pie[1]).isWithin(0.001f).of(0.6f)
+    }
+
+    @Test
+    fun `showDetailSheet leaves pie values empty for non-exclusive MC`() = runTest {
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(mcQuestion().copy(exclusiveAnswers = false))
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.detail.pieValues).isEmpty()
+    }
+
+    @Test
+    fun `updatePieForecasts submits only options whose percent changed`() = runTest {
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(mcQuestion())
+        advanceUntilIdle()
+        // optA stays at its current 40%; optB moves from (implied) 60% to 60%
+        // — then shift 10 points from A to B so both change.
+        vm.setPieValues(listOf(0.3f, 0.7f))
+        advanceUntilIdle()
+        vm.updatePieForecasts()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.addForecast("mc1", 0.3, "optA") }
+        // optB had no forecast at all, so it's always submitted.
+        coVerify(exactly = 1) { repository.addForecast("mc1", 0.7, "optB") }
+        assertThat(vm.uiState.value.detail.question).isNull()
+    }
+
+    @Test
+    fun `updatePieForecasts skips options unchanged as a whole percent`() = runTest {
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        val question = mcQuestion().copy(
+            options = listOf(
+                TestData.questionOption(id = "optA", text = "Alpha", latestForecast = 0.4),
+                TestData.questionOption(id = "optB", text = "Beta", latestForecast = 0.6),
+            ),
+        )
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.updatePieForecasts()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.addForecast(any(), any(), any()) }
+        assertThat(vm.uiState.value.detail.question).isNull()
+    }
+
+    @Test
     fun `resolveMcExclusive forwards the resolution text`() = runTest {
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {

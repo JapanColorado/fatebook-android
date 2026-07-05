@@ -21,6 +21,21 @@ val ResolveYes = Color(0xFF34A853)
 val ResolveNo = Color(0xFFEA4335)
 val ResolveAmbiguous = Color(0xFF9E9E9E)
 
+// Multiple-choice option colors — mid-tone hues that read on both light and
+// dark surfaces; cycled by option index in the pie chart and option rows.
+private val McOptionPalette = listOf(
+    Color(0xFF4285F4), // blue
+    Color(0xFFF9AB00), // amber
+    Color(0xFF34A853), // green
+    Color(0xFF9334E6), // purple
+    Color(0xFFFA7B17), // orange
+    Color(0xFF12B5CB), // teal
+    Color(0xFFF538A0), // pink
+    Color(0xFFEA4335), // red
+)
+
+fun mcOptionColor(index: Int): Color = McOptionPalette[index % McOptionPalette.size]
+
 fun forecastColor(probability: Double): Color = when {
     probability >= 0.80 -> ForecastHigh
     probability >= 0.60 -> ForecastMedHigh

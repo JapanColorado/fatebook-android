@@ -253,10 +253,8 @@ class AnalyticsViewModel @Inject constructor(
          * time-weighted (see [BrierScoring]). Each scored item contributes
          * equally regardless of how many times it was forecasted.
          */
-        fun computeBrierScore(items: List<ScoringItem>): Double? {
-            val scores = items.mapNotNull { it.score }
-            return if (scores.isEmpty()) null else scores.sum() / scores.size
-        }
+        fun computeBrierScore(items: List<ScoringItem>): Double? =
+            BrierScoring.meanOrNull(items.mapNotNull { it.score })
 
         /**
          * Folded calibration: forecasts below 50% are converted to their complement

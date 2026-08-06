@@ -48,9 +48,14 @@ interface QuestionDao {
     @Query("DELETE FROM questions WHERE id = :questionId")
     suspend fun deleteById(questionId: String)
 
-    /** Delete every question whose id is NOT in [keepIds]. Used for set-diff refresh. */
-    @Query("DELETE FROM questions WHERE id NOT IN (:keepIds)")
-    suspend fun deleteByIdsNotIn(keepIds: List<String>)
+    /**
+     * Delete the given questions. Callers must chunk [ids] below SQLite's
+     * bind-argument limit (999 before Android 14) — see the set-diff prune in
+     * QuestionRepository, which computes deletions in Kotlin instead of using
+     * an unboundable `NOT IN (:keepIds)`.
+     */
+    @Query("DELETE FROM questions WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
 
     @Query("SELECT * FROM questions WHERE id = :questionId")
     suspend fun getById(questionId: String): QuestionEntity?

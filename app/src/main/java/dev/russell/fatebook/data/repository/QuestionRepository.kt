@@ -51,6 +51,12 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * SQLite binds one host parameter per element of an `IN (:ids)` list, and the
+ * limit is 999 on Android < 14 — chunk every id list below it.
+ */
+private const val SQLITE_MAX_BIND_ARGS = 900
+
 @Singleton
 class QuestionRepository @Inject constructor(
     private val api: FatebookApi,
@@ -196,12 +202,11 @@ class QuestionRepository @Inject constructor(
                 { DtoChildren(it.toForecastEntities(), it.toCommentEntities(), it.toOptionEntities()) },
             )
         }
-        // Keep server ids from the response + any local-only ids that haven't synced.
-        val localOnlyIds = dao.getAllIds()
-            .filter { it.startsWith(PendingMutationEntity.LOCAL_ID_PREFIX) }
-        val keepIds = dtos.map { it.id } + localOnlyIds
         transactor.transact {
-            val existingById = dao.getByIds(dtos.map { it.id }).associateBy { it.id }
+            val existingById = dtos.map { it.id }
+                .chunked(SQLITE_MAX_BIND_ARGS)
+                .flatMap { dao.getByIds(it) }
+                .associateBy { it.id }
             // lastSyncedEpochMs is stamped at mapping time and never matches the
             // cached row — ignore it when deciding whether anything changed.
             val changedIds = questionEntities.filter { new ->
@@ -212,7 +217,14 @@ class QuestionRepository @Inject constructor(
                 dao.upsertAll(questionEntities.filter { it.id in changedIds })
             }
             if (prune) {
-                dao.deleteByIdsNotIn(keepIds)
+                // Keep server ids from the response + any local-only ids that
+                // haven't synced. Deletions are computed here rather than with
+                // `NOT IN (:keepIds)` so the id list can be chunked.
+                val serverIds = dtos.mapTo(HashSet()) { it.id }
+                dao.getAllIds()
+                    .filter { it !in serverIds && !it.startsWith(PendingMutationEntity.LOCAL_ID_PREFIX) }
+                    .chunked(SQLITE_MAX_BIND_ARGS)
+                    .forEach { dao.deleteByIds(it) }
             }
             for (dto in dtos) {
                 val children = childrenById.getValue(dto.id)

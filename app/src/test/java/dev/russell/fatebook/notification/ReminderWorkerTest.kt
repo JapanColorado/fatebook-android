@@ -64,10 +64,17 @@ class ReminderWorkerTest {
     // --- pure notification fan-out decisions ---
 
     @Test
-    fun `selectForNotifications caps at five, keeping the first (most overdue)`() {
-        val questions = (1..8).map { TestData.question(id = "q$it") }
+    fun `selectForNotifications caps at five, keeping the most overdue regardless of input order`() {
+        // Distinct resolve-by dates, q1 most overdue … q8 least; passed in
+        // reversed so the cap can only be right if it sorts for itself.
+        val byOverdue = (1..8).map {
+            TestData.question(
+                id = "q$it",
+                resolveBy = java.time.Instant.parse("2020-01-0${it}T00:00:00Z"),
+            )
+        }
 
-        val selected = NotificationHelper.selectForNotifications(questions)
+        val selected = NotificationHelper.selectForNotifications(byOverdue.reversed())
 
         assertThat(selected.map { it.id })
             .containsExactly("q1", "q2", "q3", "q4", "q5").inOrder()

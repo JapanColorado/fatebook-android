@@ -43,22 +43,22 @@ class UserPreferences @Inject constructor(
     // --- API Key (encrypted) ---
 
     // Cached after first read: ApiKeyInterceptor reads this on every HTTP
-    // request, and each uncached read is an AES-GCM decrypt.
-    @Volatile
+    // request, and each uncached read is an AES-GCM decrypt. The lock keeps a
+    // concurrent first read from caching the old key over a racing set() —
+    // that stale value would then be served until process death.
+    private val apiKeyLock = Any()
     private var cachedApiKey: String? = null
-
-    @Volatile
     private var apiKeyLoaded = false
 
     var apiKey: String?
-        get() {
+        get() = synchronized(apiKeyLock) {
             if (!apiKeyLoaded) {
                 cachedApiKey = encryptedPrefs.getString(KEY_API_KEY, null)
                 apiKeyLoaded = true
             }
-            return cachedApiKey
+            cachedApiKey
         }
-        set(value) {
+        set(value) = synchronized(apiKeyLock) {
             encryptedPrefs.edit().putString(KEY_API_KEY, value).apply()
             cachedApiKey = value
             apiKeyLoaded = true
@@ -121,9 +121,11 @@ class UserPreferences @Inject constructor(
     }
 
     fun clearAll() {
-        encryptedPrefs.edit().clear().apply()
-        cachedApiKey = null
-        apiKeyLoaded = true
+        synchronized(apiKeyLock) {
+            encryptedPrefs.edit().clear().apply()
+            cachedApiKey = null
+            apiKeyLoaded = true
+        }
     }
 
     companion object {

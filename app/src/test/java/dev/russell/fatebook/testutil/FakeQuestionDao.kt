@@ -16,7 +16,7 @@ class FakeQuestionDao : QuestionDao {
     var deleteAllCallCount = 0
         private set
 
-    var deleteByIdsNotInCallCount = 0
+    var deleteByIdsCallCount = 0
         private set
 
     var upsertAllCallCount = 0
@@ -66,9 +66,9 @@ class FakeQuestionDao : QuestionDao {
         _questions.value = _questions.value.filter { it.id != questionId }
     }
 
-    override suspend fun deleteByIdsNotIn(keepIds: List<String>) {
-        deleteByIdsNotInCallCount++
-        _questions.value = _questions.value.filter { it.id in keepIds }
+    override suspend fun deleteByIds(ids: List<String>) {
+        deleteByIdsCallCount++
+        _questions.value = _questions.value.filter { it.id !in ids }
     }
 
     override suspend fun getById(questionId: String): QuestionEntity? {

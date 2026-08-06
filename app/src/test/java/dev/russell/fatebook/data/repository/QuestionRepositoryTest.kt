@@ -237,11 +237,11 @@ class QuestionRepositoryTest {
             )
         }
         repository.refresh()
-        val pruneCountAfterRefresh = dao.deleteByIdsNotInCallCount
+        val pruneCountAfterRefresh = dao.deleteByIdsCallCount
 
         repository.loadMore()
 
-        assertThat(dao.deleteByIdsNotInCallCount).isEqualTo(pruneCountAfterRefresh)
+        assertThat(dao.deleteByIdsCallCount).isEqualTo(pruneCountAfterRefresh)
         assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2")
     }
 

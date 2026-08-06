@@ -55,10 +55,16 @@ object BrierScoring {
      * with no forecast before resolution contribute nothing. Returns null when no
      * question can be scored.
      */
-    fun overallBrierScore(questions: List<QuestionForScoring>): Double? {
-        val scores = questions.mapNotNull { questionBrierScore(it) }
-        return if (scores.isEmpty()) null else scores.sum() / scores.size
-    }
+    fun overallBrierScore(questions: List<QuestionForScoring>): Double? =
+        meanOrNull(questions.mapNotNull { questionBrierScore(it) })
+
+    /**
+     * The aggregation rule: unweighted mean of per-item scores, null when
+     * nothing could be scored. Also used by AnalyticsViewModel, which averages
+     * lazily-cached per-item scores instead of recomputing them per grouping.
+     */
+    fun meanOrNull(scores: List<Double>): Double? =
+        if (scores.isEmpty()) null else scores.sum() / scores.size
 
     /**
      * Time-weighted absolute Brier score for a single question. Returns null if the

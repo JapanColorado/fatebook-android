@@ -66,7 +66,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -361,6 +360,7 @@ private fun StreakChip(
 }
 
 private val monthLabelFormatter = java.time.format.DateTimeFormatter.ofPattern("MMM")
+private val monthDayFormatter = java.time.format.DateTimeFormatter.ofPattern("MMM d")
 
 /**
  * Brier score by resolution month: polyline + points, dashed reference line at
@@ -658,10 +658,14 @@ private fun ActivityHeatmap(dailyActivity: List<DayActivity>) {
         return
     }
 
-    val weeks: List<List<DayActivity>> = dailyActivity.chunked(7)
-    val maxCount = dailyActivity.maxOf { it.count }.coerceAtLeast(1)
+    val weeks: List<List<DayActivity>> = remember(dailyActivity) { dailyActivity.chunked(7) }
+    val maxCount = remember(dailyActivity) {
+        dailyActivity.maxOf { it.count }.coerceAtLeast(1)
+    }
     val primary = MaterialTheme.colorScheme.primary
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    // One clock read for the grid, not one per cell.
+    val today = remember { LocalDate.now() }
 
     var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
 
@@ -696,21 +700,13 @@ private fun ActivityHeatmap(dailyActivity: List<DayActivity>) {
                                 empty = surfaceVariant,
                             )
                             val isSelected = selectedDate == day.date
-                            val isFuture = day.date.isAfter(LocalDate.now())
+                            val isFuture = day.date.isAfter(today)
                             Box(
                                 modifier = Modifier
                                     .size(cellSize)
                                     .background(
                                         color = if (isFuture) Color.Transparent else color,
                                         shape = RoundedCornerShape(4.dp),
-                                    )
-                                    .then(
-                                        if (isSelected) {
-                                            Modifier.background(
-                                                color = color,
-                                                shape = RoundedCornerShape(4.dp),
-                                            )
-                                        } else Modifier,
                                     )
                                     .clickable(enabled = !isFuture) {
                                         selectedDate = if (isSelected) null else day.date
@@ -731,8 +727,7 @@ private fun ActivityHeatmap(dailyActivity: List<DayActivity>) {
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(6.dp),
                 ) {
-                    val formatter = DateTimeFormatter.ofPattern("MMM d")
-                    val label = selected.date.format(formatter)
+                    val label = selected.date.format(monthDayFormatter)
                     val countText = if (selected.count == 1) "1 forecast" else "${selected.count} forecasts"
                     Text(
                         text = "$label: $countText",
@@ -754,16 +749,17 @@ private fun MonthLabelsRow(
     cellSpacing: androidx.compose.ui.unit.Dp,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurfaceVariant
-    val monthFormatter = DateTimeFormatter.ofPattern("MMM")
 
     // Only label a column when its first-day-of-week falls in a *new* month vs. the previous column.
-    val labels: List<String?> = weeks.mapIndexed { i, week ->
-        val firstDay = week.first().date
-        if (i == 0) {
-            firstDay.format(monthFormatter)
-        } else {
-            val prevFirst = weeks[i - 1].first().date
-            if (firstDay.month != prevFirst.month) firstDay.format(monthFormatter) else null
+    val labels: List<String?> = remember(weeks) {
+        weeks.mapIndexed { i, week ->
+            val firstDay = week.first().date
+            if (i == 0) {
+                firstDay.format(monthLabelFormatter)
+            } else {
+                val prevFirst = weeks[i - 1].first().date
+                if (firstDay.month != prevFirst.month) firstDay.format(monthLabelFormatter) else null
+            }
         }
     }
 

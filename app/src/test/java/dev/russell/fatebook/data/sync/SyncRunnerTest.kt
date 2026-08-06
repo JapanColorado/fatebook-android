@@ -64,6 +64,7 @@ class SyncRunnerTest {
             enqueuer = enqueuer,
             syncScheduler = noopScheduler,
             moshi = Moshi.Builder().build(),
+            defaultDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         widgetRefreshCount = 0
         runner = SyncRunner(

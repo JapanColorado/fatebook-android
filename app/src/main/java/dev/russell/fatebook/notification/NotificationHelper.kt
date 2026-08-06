@@ -28,12 +28,8 @@ class NotificationHelper @Inject constructor() {
             return
         }
 
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra(EXTRA_OPEN_CREATE, true)
-        }
         val pendingIntent = PendingIntent.getActivity(
-            context, 0, intent,
+            context, 0, openCreateIntent(context),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -75,12 +71,8 @@ class NotificationHelper @Inject constructor() {
         }
 
         // Group summary carries the total count and the open-filter intent.
-        val summaryIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra(EXTRA_OPEN_RESOLVE_FILTER, true)
-        }
         val summaryPending = PendingIntent.getActivity(
-            context, 1, summaryIntent,
+            context, 1, openResolveFilterIntent(context),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val count = questions.size
@@ -108,14 +100,10 @@ class NotificationHelper @Inject constructor() {
     ): android.app.Notification {
         val notificationId = notificationIdFor(question.id)
 
-        val contentIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra(EXTRA_QUESTION_ID, question.id)
-        }
         val contentPending = PendingIntent.getActivity(
             context,
             requestCodeFor(question.id, action = 0),
-            contentIntent,
+            openQuestionIntent(context, question.id),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -169,13 +157,32 @@ class NotificationHelper @Inject constructor() {
 
         private const val RESOLVE_ID_BASE = 10_000
 
+        // The app-launch intents for notification taps double as the widget's
+        // click actions — build them here so the routing extras stay in one place.
+
+        /** Launch the app on the Create screen. */
+        fun openCreateIntent(context: Context): Intent =
+            launchIntent(context).putExtra(EXTRA_OPEN_CREATE, true)
+
+        /** Launch the app on the feed with the Ready to Resolve filter. */
+        fun openResolveFilterIntent(context: Context): Intent =
+            launchIntent(context).putExtra(EXTRA_OPEN_RESOLVE_FILTER, true)
+
+        /** Launch the app with one question's detail sheet open. */
+        fun openQuestionIntent(context: Context, questionId: String): Intent =
+            launchIntent(context).putExtra(EXTRA_QUESTION_ID, questionId)
+
+        private fun launchIntent(context: Context): Intent =
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+
         /**
-         * Which questions get their own notification: the DAO already orders
-         * ready-to-resolve by resolve-by ascending, so the cap keeps the most
-         * overdue ones.
+         * Which questions get their own notification: the cap keeps the most
+         * overdue ones, regardless of the caller's ordering.
          */
         fun selectForNotifications(questions: List<Question>): List<Question> =
-            questions.take(MAX_QUESTION_NOTIFICATIONS)
+            questions.sortedBy { it.resolveByDate }.take(MAX_QUESTION_NOTIFICATIONS)
 
         /** Only binary questions can offer one-tap YES/NO. */
         fun hasResolveActions(question: Question): Boolean =

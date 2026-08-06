@@ -34,11 +34,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -50,6 +51,7 @@ import dev.russell.fatebook.ui.components.QuestionCard
 import dev.russell.fatebook.ui.components.ShimmerQuestionCardList
 import dev.russell.fatebook.ui.components.SyncErrorsSheet
 import dev.russell.fatebook.ui.components.SyncIssuesBanner
+import dev.russell.fatebook.ui.detail.McActions
 import dev.russell.fatebook.ui.detail.QuestionDetailSheet
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -72,6 +74,7 @@ fun FeedScreen(
     viewModel: FeedViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val detail by viewModel.detail.collectAsStateWithLifecycle()
 
     // Handle initial filter from notification
     LaunchedEffect(initialFilter) {
@@ -87,8 +90,23 @@ fun FeedScreen(
         }
     }
 
+    // McActions is a constructor call, which strong skipping does not memoize —
+    // remember it so QuestionCard/detail-sheet callbacks keep a stable identity.
+    val mcActions = remember(viewModel) {
+        McActions(
+            onToggleOptionExpanded = viewModel::toggleOptionExpanded,
+            onOptionSliderChange = viewModel::setOptionSliderValue,
+            onUpdateOptionForecast = viewModel::updateOptionForecast,
+            onPieValuesChange = viewModel::setPieValues,
+            onUpdatePieForecasts = viewModel::updatePieForecasts,
+            onResolveExclusive = viewModel::resolveMcExclusive,
+            onResolveOption = viewModel::resolveMcOption,
+        )
+    }
+
     FeedScreenContent(
         state = state,
+        detail = detail,
         onCreateClick = onCreateClick,
         onSettingsClick = onSettingsClick,
         onAnalyticsClick = onAnalyticsClick,
@@ -102,13 +120,7 @@ fun FeedScreen(
         onResolve = viewModel::resolveQuestion,
         onForecastSliderChange = viewModel::setForecastSliderValue,
         onUpdateForecast = viewModel::updateForecast,
-        onToggleOptionExpanded = viewModel::toggleOptionExpanded,
-        onOptionSliderChange = viewModel::setOptionSliderValue,
-        onUpdateOptionForecast = viewModel::updateOptionForecast,
-        onPieValuesChange = viewModel::setPieValues,
-        onUpdatePieForecasts = viewModel::updatePieForecasts,
-        onResolveMcExclusive = viewModel::resolveMcExclusive,
-        onResolveMcOption = viewModel::resolveMcOption,
+        mcActions = mcActions,
         onPushResolveBy = viewModel::pushResolveBy,
         onDismissDetailSheet = viewModel::dismissDetailSheet,
         onDismissError = viewModel::dismissError,
@@ -135,6 +147,7 @@ fun FeedScreen(
 @Composable
 fun FeedScreenContent(
     state: FeedUiState,
+    detail: DetailSheetState = DetailSheetState(),
     onCreateClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onAnalyticsClick: () -> Unit = {},
@@ -148,13 +161,7 @@ fun FeedScreenContent(
     onResolve: (dev.russell.fatebook.domain.model.Resolution) -> Unit = {},
     onForecastSliderChange: (Float) -> Unit = {},
     onUpdateForecast: () -> Unit = {},
-    onToggleOptionExpanded: (String) -> Unit = {},
-    onOptionSliderChange: (Float) -> Unit = {},
-    onUpdateOptionForecast: () -> Unit = {},
-    onPieValuesChange: (List<Float>) -> Unit = {},
-    onUpdatePieForecasts: () -> Unit = {},
-    onResolveMcExclusive: (String) -> Unit = {},
-    onResolveMcOption: (String, Boolean) -> Unit = { _, _ -> },
+    mcActions: McActions = McActions(),
     onPushResolveBy: (java.time.Period) -> Unit = {},
     onDismissDetailSheet: () -> Unit = {},
     onDismissError: () -> Unit = {},
@@ -327,17 +334,17 @@ fun FeedScreenContent(
                 } else {
                     val listState = rememberLazyListState()
 
-                    val shouldLoadMore by remember {
-                        derivedStateOf {
-                            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                            val totalItems = listState.layoutInfo.totalItemsCount
-                            lastVisible >= totalItems - 3
+                    // snapshotFlow instead of derivedStateOf: layoutInfo is
+                    // recreated every measure pass, so a derivedStateOf over it
+                    // recomputes (and allocates) on every scroll frame.
+                    LaunchedEffect(listState) {
+                        snapshotFlow {
+                            val info = listState.layoutInfo
+                            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            lastVisible >= info.totalItemsCount - 3
                         }
-                    }
-                    LaunchedEffect(shouldLoadMore) {
-                        if (shouldLoadMore && state.hasMore) {
-                            onLoadMore()
-                        }
+                            .distinctUntilChanged()
+                            .collect { nearEnd -> if (nearEnd) onLoadMore() }
                     }
 
                     LazyColumn(
@@ -383,21 +390,16 @@ fun FeedScreenContent(
         )
     }
 
-    // Detail bottom sheet
-    state.detail.question?.let { question ->
+    // Detail bottom sheet — reads only `detail`, so slider drags and comment
+    // keystrokes recompose this call alone, not the feed behind the sheet.
+    detail.question?.let { question ->
         QuestionDetailSheet(
             question = question,
-            detailState = state.detail,
+            detailState = detail,
             onForecastSliderChange = onForecastSliderChange,
             onUpdateForecast = onUpdateForecast,
             onResolve = onResolve,
-            onToggleOptionExpanded = onToggleOptionExpanded,
-            onOptionSliderChange = onOptionSliderChange,
-            onUpdateOptionForecast = onUpdateOptionForecast,
-            onPieValuesChange = onPieValuesChange,
-            onUpdatePieForecasts = onUpdatePieForecasts,
-            onResolveMcExclusive = onResolveMcExclusive,
-            onResolveMcOption = onResolveMcOption,
+            mcActions = mcActions,
             onPushResolveBy = onPushResolveBy,
             onEnterEditMode = onEnterEditMode,
             onEditTitleChange = onEditTitleChange,

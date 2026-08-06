@@ -20,6 +20,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -65,9 +66,16 @@ fun ProbabilityPieChart(
     val surfaceColor = MaterialTheme.colorScheme.surface
     val handleBorderColor = MaterialTheme.colorScheme.onSurface
 
-    val percents = PieChartMath.displayPercents(segments.map { it.value })
-    val summary = segments.mapIndexed { i, s -> "${s.label} ${percents[i]}%" }
-        .joinToString(", ")
+    // Dragging recomposes every frame — keep the per-frame work down: derive
+    // display values only when segments change, and reuse measured labels
+    // (whole percents, so at most 101 distinct layouts).
+    val percents = remember(segments) {
+        PieChartMath.displayPercents(segments.map { it.value })
+    }
+    val summary = remember(segments) {
+        segments.mapIndexed { i, s -> "${s.label} ${percents[i]}%" }.joinToString(", ")
+    }
+    val labelLayouts = remember(textMeasurer) { mutableMapOf<Int, TextLayoutResult>() }
 
     Canvas(
         modifier = modifier
@@ -136,14 +144,9 @@ fun ProbabilityPieChart(
             )
             val labelPos = center +
                 Offset(cos(midAngle).toFloat(), sin(midAngle).toFloat()) * (radius * 0.62f)
-            val layout = textMeasurer.measure(
-                text = "${percents[i]}%",
-                style = TextStyle(
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
+            val layout = labelLayouts.getOrPut(percents[i]) {
+                textMeasurer.measure(text = "${percents[i]}%", style = LABEL_STYLE)
+            }
             drawText(
                 textLayoutResult = layout,
                 topLeft = labelPos - Offset(layout.size.width / 2f, layout.size.height / 2f),
@@ -173,6 +176,13 @@ fun ProbabilityPieChart(
 
 /** Pie starts at 12 o'clock and runs clockwise. */
 private const val START_ANGLE = -90f
+
+/** Percent labels are always white-on-slice-color, independent of theme. */
+private val LABEL_STYLE = TextStyle(
+    color = Color.White,
+    fontSize = 13.sp,
+    fontWeight = FontWeight.Bold,
+)
 
 /** How far (as a fraction of the circle) a touch can be from a boundary and still grab it. */
 private const val GRAB_TOLERANCE = 0.09f

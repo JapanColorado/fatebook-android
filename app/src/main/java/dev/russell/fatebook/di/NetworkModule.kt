@@ -30,7 +30,9 @@ object NetworkModule {
             .addInterceptor(apiKeyInterceptor)
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
-                    level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY
+                    // BASIC, not BODY: BODY buffers entire JSON payloads to logcat,
+                    // which visibly stalls refreshes in debug builds
+                    level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
                         else HttpLoggingInterceptor.Level.NONE
                 }
             )

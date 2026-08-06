@@ -9,11 +9,15 @@ import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
+import dev.russell.fatebook.di.DefaultDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -71,17 +75,17 @@ data class AnalyticsUiState(
 class AnalyticsViewModel @Inject constructor(
     private val repository: QuestionRepository,
     private val prefs: UserPreferences,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private val _historySync = MutableStateFlow(HistorySyncState())
-    private var autoSyncAttempted = false
 
-    val uiState: StateFlow<AnalyticsUiState> = combine(
+    // The scoring pipeline is expensive (per-item day loops), so it only reacts
+    // to Room changes; sync-progress ticks merge in via the trivial combine below.
+    private val analytics: Flow<AnalyticsUiState> = combine(
         repository.observeAll(),
-        repository.observeResolved(),
         repository.observeAllForecasts(),
-        _historySync,
-    ) { allQuestions, resolvedQuestions, allForecasts, historySync ->
+    ) { allQuestions, allForecasts ->
         val forecastsByQuestion = allForecasts.groupBy { it.questionId }
         // MC options can resolve while their parent question is still open, so
         // scoring inputs come from ALL questions (the builder filters).
@@ -95,9 +99,12 @@ class AnalyticsViewModel @Inject constructor(
             dailyActivity = computeDailyActivity(allForecasts),
             tagBreakdown = computeTagBreakdown(items),
             monthlyBrier = computeMonthlyBrier(items),
-            historySync = historySync,
             isLoading = false,
         )
+    }.flowOn(defaultDispatcher)
+
+    val uiState: StateFlow<AnalyticsUiState> = combine(analytics, _historySync) { state, sync ->
+        state.copy(historySync = sync)
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalyticsUiState())
 
@@ -107,8 +114,7 @@ class AnalyticsViewModel @Inject constructor(
         viewModelScope.launch {
             if (prefs.fullHistorySynced.first()) {
                 _historySync.update { it.copy(isComplete = true) }
-            } else if (!autoSyncAttempted) {
-                autoSyncAttempted = true
+            } else {
                 syncFullHistory()
             }
         }
@@ -147,11 +153,20 @@ class AnalyticsViewModel @Inject constructor(
      */
     data class ScoringItem(
         val tags: List<String>,
-        val resolvedAtMs: Long,
-        val resolvedYes: Boolean,
-        val rawForecasts: List<Double>,
         val scoring: BrierScoring.QuestionForScoring,
-    )
+    ) {
+        val resolvedAtMs: Long get() = scoring.resolvedAtMs
+        val resolvedYes: Boolean get() = scoring.resolvedYes
+        val rawForecasts: List<Double> get() = scoring.forecasts.map { it.forecast }
+
+        /**
+         * Cached time-weighted Brier score — the day loop is the expensive part
+         * of the pipeline and every grouping (overall/tag/month) needs it.
+         */
+        val score: Double? by lazy(LazyThreadSafetyMode.NONE) {
+            BrierScoring.questionBrierScore(scoring)
+        }
+    }
 
     companion object {
 
@@ -178,12 +193,14 @@ class AnalyticsViewModel @Inject constructor(
                         // resolvedAt is the canonical resolution time; fall back
                         // to resolveBy for rows cached before it was tracked.
                         val resolvedAtMs = (q.resolvedAt ?: q.resolveBy).toEpochMilli()
-                        items += item(
+                        items += ScoringItem(
                             tags = q.tags,
-                            createdAtMs = q.createdAt.toEpochMilli(),
-                            resolvedAtMs = resolvedAtMs,
-                            resolvedYes = q.resolution == Resolution.YES,
-                            forecasts = forecasts,
+                            scoring = scoring(
+                                createdAtMs = q.createdAt.toEpochMilli(),
+                                resolvedAtMs = resolvedAtMs,
+                                resolvedYes = q.resolution == Resolution.YES,
+                                forecasts = forecasts,
+                            ),
                         )
                     }
                     QuestionType.MULTIPLE_CHOICE -> {
@@ -197,12 +214,14 @@ class AnalyticsViewModel @Inject constructor(
                             if (forecasts.isEmpty()) continue
                             val resolvedAtMs =
                                 (option.resolvedAt ?: q.resolvedAt ?: q.resolveBy).toEpochMilli()
-                            items += item(
+                            items += ScoringItem(
                                 tags = q.tags,
-                                createdAtMs = q.createdAt.toEpochMilli(),
-                                resolvedAtMs = resolvedAtMs,
-                                resolvedYes = option.resolution == Resolution.YES,
-                                forecasts = forecasts,
+                                scoring = scoring(
+                                    createdAtMs = q.createdAt.toEpochMilli(),
+                                    resolvedAtMs = resolvedAtMs,
+                                    resolvedYes = option.resolution == Resolution.YES,
+                                    forecasts = forecasts,
+                                ),
                             )
                         }
                     }
@@ -212,47 +231,32 @@ class AnalyticsViewModel @Inject constructor(
             return items
         }
 
-        private fun item(
-            tags: List<String>,
+        private fun scoring(
             createdAtMs: Long,
             resolvedAtMs: Long,
             resolvedYes: Boolean,
             forecasts: List<ForecastEntity>,
-        ) = ScoringItem(
-            tags = tags,
+        ) = BrierScoring.QuestionForScoring(
+            createdAtMs = createdAtMs,
             resolvedAtMs = resolvedAtMs,
             resolvedYes = resolvedYes,
-            rawForecasts = forecasts.map { it.forecast },
-            scoring = BrierScoring.QuestionForScoring(
-                createdAtMs = createdAtMs,
-                resolvedAtMs = resolvedAtMs,
-                resolvedYes = resolvedYes,
-                forecasts = forecasts.map {
-                    BrierScoring.TimedForecast(it.createdAtEpochMs, it.forecast)
-                },
-            ),
+            forecasts = forecasts.map {
+                BrierScoring.TimedForecast(it.createdAtEpochMs, it.forecast)
+            },
         )
 
         fun countScoredForecasts(items: List<ScoringItem>): Int =
             items.sumOf { it.rawForecasts.size }
-
-        fun countScoredForecasts(
-            questions: List<Question>,
-            forecastsByQuestion: Map<String, List<ForecastEntity>>,
-        ): Int = countScoredForecasts(buildScoringInputs(questions, forecastsByQuestion))
 
         /**
          * Overall Brier score matching fatebook.io: two-sided and per-item
          * time-weighted (see [BrierScoring]). Each scored item contributes
          * equally regardless of how many times it was forecasted.
          */
-        fun computeBrierScore(items: List<ScoringItem>): Double? =
-            BrierScoring.overallBrierScore(items.map { it.scoring })
-
-        fun computeBrierScore(
-            questions: List<Question>,
-            forecastsByQuestion: Map<String, List<ForecastEntity>>,
-        ): Double? = computeBrierScore(buildScoringInputs(questions, forecastsByQuestion))
+        fun computeBrierScore(items: List<ScoringItem>): Double? {
+            val scores = items.mapNotNull { it.score }
+            return if (scores.isEmpty()) null else scores.sum() / scores.size
+        }
 
         /**
          * Folded calibration: forecasts below 50% are converted to their complement
@@ -291,12 +295,6 @@ class AnalyticsViewModel @Inject constructor(
             }
         }
 
-        fun computeCalibrationBuckets(
-            questions: List<Question>,
-            forecastsByQuestion: Map<String, List<ForecastEntity>>,
-        ): List<CalibrationBucket> =
-            computeCalibrationBuckets(buildScoringInputs(questions, forecastsByQuestion))
-
         /**
          * Per-tag Brier scores over the same inputs as the overall score.
          * An item carrying several tags counts once under each of them.
@@ -315,12 +313,6 @@ class AnalyticsViewModel @Inject constructor(
                 )
             }.sortedBy { it.brier }
         }
-
-        fun computeTagBreakdown(
-            questions: List<Question>,
-            forecastsByQuestion: Map<String, List<ForecastEntity>>,
-        ): List<TagBrierEntry> =
-            computeTagBreakdown(buildScoringInputs(questions, forecastsByQuestion))
 
         /**
          * Mean per-item Brier score bucketed by resolution month (device zone),

@@ -71,6 +71,7 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.activity.compose)
     implementation(libs.navigation.compose)
+    implementation(libs.profileinstaller)
 
     // Hilt
     implementation(libs.hilt.android)

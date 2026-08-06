@@ -56,6 +56,22 @@ data class Question(
 
     val forecastPercent: Int?
         get() = yourLatestForecast?.let { (it * 100).roundToInt() }
+
+    /** The YES-resolved option of a multiple-choice question — its "winner", if any. */
+    val winningOption: QuestionOption?
+        get() = options.firstOrNull { it.resolution == Resolution.YES }
+
+    /**
+     * Exclusive multiple-choice questions that are still open for forecasting use
+     * the interactive pie editor (options must sum to 100%). Non-exclusive MC
+     * options are independent probabilities, so they keep per-option sliders.
+     */
+    val isPieEditable: Boolean
+        get() = type == QuestionType.MULTIPLE_CHOICE &&
+            exclusiveAnswers &&
+            options.size >= 2 &&
+            options.all { it.resolution == null } &&
+            !resolved && !isReadyToResolve && !isForecastHidden
 }
 
 @Immutable

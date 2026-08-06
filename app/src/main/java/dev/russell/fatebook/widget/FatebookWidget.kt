@@ -1,7 +1,6 @@
 package dev.russell.fatebook.widget
 
 import android.content.Context
-import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -30,7 +29,6 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import dev.russell.fatebook.MainActivity
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.notification.NotificationHelper
 
@@ -62,14 +60,8 @@ class FatebookWidget : GlanceAppWidget() {
 
     @Composable
     private fun WidgetContent(context: Context, readyCount: Int) {
-        val openResolveIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra(NotificationHelper.EXTRA_OPEN_RESOLVE_FILTER, true)
-        }
-        val openCreateIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra(NotificationHelper.EXTRA_OPEN_CREATE, true)
-        }
+        val openResolveIntent = NotificationHelper.openResolveFilterIntent(context)
+        val openCreateIntent = NotificationHelper.openCreateIntent(context)
 
         Row(
             modifier = GlanceModifier

@@ -4,12 +4,15 @@ import com.google.common.truth.Truth.assertThat
 import dev.russell.fatebook.data.local.ForecastEntity
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.QuestionRepository
+import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
+import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -42,7 +45,6 @@ class AnalyticsViewModelTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         every { repository.observeAll() } returns flowOf(emptyList())
-        every { repository.observeResolved() } returns flowOf(emptyList())
         every { repository.observeAllForecasts() } returns flowOf(emptyList())
         // Already synced by default so init doesn't kick off the history pull.
         every { prefs.fullHistorySynced } returns flowOf(true)
@@ -54,8 +56,14 @@ class AnalyticsViewModelTest {
     }
 
     private fun createViewModel(): AnalyticsViewModel {
-        return AnalyticsViewModel(repository, prefs)
+        return AnalyticsViewModel(repository, prefs, testDispatcher)
     }
+
+    /** Shorthand for building scoring items straight from questions + forecasts. */
+    private fun scoringItems(
+        questions: List<Question>,
+        forecasts: Map<String, List<ForecastEntity>>,
+    ) = AnalyticsViewModel.buildScoringInputs(questions, forecasts)
 
     private fun forecast(questionId: String, value: Double, createdAtMs: Long = base.toEpochMilli()) =
         ForecastEntity(questionId = questionId, forecast = value, createdAtEpochMs = createdAtMs)
@@ -82,7 +90,7 @@ class AnalyticsViewModelTest {
         // (the old one-sided value was 0.04 — half of this).
         val questions = listOf(resolvedQuestion("q1", Resolution.YES))
         val forecasts = mapOf("q1" to listOf(forecast("q1", 0.8)))
-        val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
+        val score = AnalyticsViewModel.computeBrierScore(scoringItems(questions, forecasts))
         assertThat(score).isWithin(0.0001).of(0.08)
     }
 
@@ -97,7 +105,7 @@ class AnalyticsViewModelTest {
                 forecast("q1", 0.9, base.plusMillis(5 * dayMs).toEpochMilli()),
             ),
         )
-        val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
+        val score = AnalyticsViewModel.computeBrierScore(scoringItems(questions, forecasts))
         assertThat(score).isWithin(0.0001).of(0.17)
     }
 
@@ -112,7 +120,7 @@ class AnalyticsViewModelTest {
             "q1" to listOf(forecast("q1", 0.8)),
             "q2" to listOf(forecast("q2", 0.3)),
         )
-        val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
+        val score = AnalyticsViewModel.computeBrierScore(scoringItems(questions, forecasts))
         assertThat(score).isWithin(0.0001).of(0.13)
     }
 
@@ -129,7 +137,7 @@ class AnalyticsViewModelTest {
             resolvedAt = null,
         )
         val forecasts = mapOf("q1" to listOf(forecast("q1", 0.8)))
-        val score = AnalyticsViewModel.computeBrierScore(listOf(q), forecasts)
+        val score = AnalyticsViewModel.computeBrierScore(scoringItems(listOf(q), forecasts))
         assertThat(score).isWithin(0.0001).of(0.08)
     }
 
@@ -143,7 +151,7 @@ class AnalyticsViewModelTest {
             "q1" to listOf(forecast("q1", 0.8)),
             "q2" to listOf(forecast("q2", 0.5)),
         )
-        val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
+        val score = AnalyticsViewModel.computeBrierScore(scoringItems(questions, forecasts))
         // Only q1 counted -> 0.08
         assertThat(score).isWithin(0.0001).of(0.08)
     }
@@ -156,7 +164,7 @@ class AnalyticsViewModelTest {
         )
         // Only q1 has forecasts; q2 contributes nothing -> 0.08.
         val forecasts = mapOf("q1" to listOf(forecast("q1", 0.8)))
-        val score = AnalyticsViewModel.computeBrierScore(questions, forecasts)
+        val score = AnalyticsViewModel.computeBrierScore(scoringItems(questions, forecasts))
         assertThat(score).isWithin(0.0001).of(0.08)
     }
 
@@ -171,13 +179,10 @@ class AnalyticsViewModelTest {
             "qt1" to listOf(forecast("qt1", 0.9)),
         )
 
-        assertThat(AnalyticsViewModel.computeBrierScore(listOf(mc, quantity), forecasts)).isNull()
-        assertThat(
-            AnalyticsViewModel.computeCalibrationBuckets(listOf(mc, quantity), forecasts),
-        ).isEmpty()
-        assertThat(
-            AnalyticsViewModel.countScoredForecasts(listOf(mc, quantity), forecasts),
-        ).isEqualTo(0)
+        val items = scoringItems(listOf(mc, quantity), forecasts)
+        assertThat(AnalyticsViewModel.computeBrierScore(items)).isNull()
+        assertThat(AnalyticsViewModel.computeCalibrationBuckets(items)).isEmpty()
+        assertThat(AnalyticsViewModel.countScoredForecasts(items)).isEqualTo(0)
     }
 
     // --- full-history sync ---
@@ -185,7 +190,7 @@ class AnalyticsViewModelTest {
     @Test
     fun `init auto-triggers the history sync when never synced`() = runTest {
         every { prefs.fullHistorySynced } returns flowOf(false)
-        coEvery { repository.loadAllQuestions(any()) } returns emptyList()
+        coEvery { repository.loadAllQuestions(any()) } just Runs
 
         createViewModel()
         advanceUntilIdle()
@@ -214,7 +219,6 @@ class AnalyticsViewModelTest {
         coEvery { repository.loadAllQuestions(any()) } coAnswers {
             firstArg<(Int) -> Unit>().invoke(100)
             firstArg<(Int) -> Unit>().invoke(200)
-            emptyList()
         }
 
         val vm = createViewModel()
@@ -261,7 +265,7 @@ class AnalyticsViewModelTest {
         )
 
         val breakdown =
-            AnalyticsViewModel.computeTagBreakdown(listOf(q1, q2, untagged), forecasts)
+            AnalyticsViewModel.computeTagBreakdown(scoringItems(listOf(q1, q2, untagged), forecasts))
 
         assertThat(breakdown.map { it.tag }).containsExactly("work", "both", "health").inOrder()
         assertThat(breakdown[0].brier).isWithin(0.0001).of(0.08)
@@ -275,7 +279,7 @@ class AnalyticsViewModelTest {
         val forecasts = mapOf("q1" to listOf(forecast("q1", 0.8)))
 
         assertThat(
-            AnalyticsViewModel.computeTagBreakdown(listOf(ambiguous), forecasts),
+            AnalyticsViewModel.computeTagBreakdown(scoringItems(listOf(ambiguous), forecasts)),
         ).isEmpty()
     }
 
@@ -435,7 +439,7 @@ class AnalyticsViewModelTest {
 
     @Test
     fun `brier score is null when no forecasts`() {
-        val score = AnalyticsViewModel.computeBrierScore(emptyList(), emptyMap())
+        val score = AnalyticsViewModel.computeBrierScore(emptyList())
         assertThat(score).isNull()
     }
 
@@ -452,7 +456,7 @@ class AnalyticsViewModelTest {
             // 0.17 folds to 0.83 -> 80-85% bucket
             "q2" to listOf(forecast("q2", 0.17)),
         )
-        val buckets = AnalyticsViewModel.computeCalibrationBuckets(questions, forecasts)
+        val buckets = AnalyticsViewModel.computeCalibrationBuckets(scoringItems(questions, forecasts))
 
         val bucket75 = buckets.find { it.rangeLabel == "75-80%" }
         assertThat(bucket75).isNotNull()
@@ -475,7 +479,7 @@ class AnalyticsViewModelTest {
             "qNo" to listOf(forecast("qNo", 0.2)),
             "qYes" to listOf(forecast("qYes", 0.2)),
         )
-        val buckets = AnalyticsViewModel.computeCalibrationBuckets(questions, forecasts)
+        val buckets = AnalyticsViewModel.computeCalibrationBuckets(scoringItems(questions, forecasts))
 
         val bucket80 = buckets.find { it.rangeLabel == "80-85%" }
         assertThat(bucket80).isNotNull()
@@ -489,7 +493,7 @@ class AnalyticsViewModelTest {
             TestData.question(id = "q1", resolved = true, resolution = Resolution.YES),
         )
         val forecasts = mapOf("q1" to listOf(forecast("q1", 0.5)))
-        val buckets = AnalyticsViewModel.computeCalibrationBuckets(questions, forecasts)
+        val buckets = AnalyticsViewModel.computeCalibrationBuckets(scoringItems(questions, forecasts))
 
         val bucket50 = buckets.find { it.rangeLabel == "50-55%" }
         assertThat(bucket50).isNotNull()
@@ -504,7 +508,7 @@ class AnalyticsViewModelTest {
             TestData.question(id = "q1", resolved = true, resolution = Resolution.NO),
         )
         val forecasts = mapOf("q1" to listOf(forecast("q1", 0.0)))
-        val buckets = AnalyticsViewModel.computeCalibrationBuckets(questions, forecasts)
+        val buckets = AnalyticsViewModel.computeCalibrationBuckets(scoringItems(questions, forecasts))
 
         val bucket95 = buckets.find { it.rangeLabel == "95-100%" }
         assertThat(bucket95).isNotNull()
@@ -520,7 +524,7 @@ class AnalyticsViewModelTest {
         val forecasts = mapOf(
             "q1" to listOf(forecast("q1", 0.76), forecast("q1", 0.77), forecast("q1", 0.78)),
         )
-        val buckets = AnalyticsViewModel.computeCalibrationBuckets(questions, forecasts)
+        val buckets = AnalyticsViewModel.computeCalibrationBuckets(scoringItems(questions, forecasts))
         val bucket75 = buckets.find { it.rangeLabel == "75-80%" }
         assertThat(bucket75).isNotNull()
         assertThat(bucket75!!.count).isEqualTo(3)
@@ -533,7 +537,7 @@ class AnalyticsViewModelTest {
             TestData.question(id = "q1", resolved = true, resolution = Resolution.YES),
         )
         val forecasts = mapOf("q1" to listOf(forecast("q1", 0.77)))
-        val buckets = AnalyticsViewModel.computeCalibrationBuckets(questions, forecasts)
+        val buckets = AnalyticsViewModel.computeCalibrationBuckets(scoringItems(questions, forecasts))
         val bucket = buckets.find { it.rangeLabel == "75-80%" }
         assertThat(bucket).isNotNull()
         assertThat(bucket!!.predictedRate).isWithin(0.001f).of(0.775f)

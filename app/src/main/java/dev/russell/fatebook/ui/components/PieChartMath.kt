@@ -1,6 +1,5 @@
 package dev.russell.fatebook.ui.components
 
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**

@@ -1,5 +1,6 @@
 package dev.russell.fatebook.ui.feed
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -9,18 +10,25 @@ import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Forecast
+import dev.russell.fatebook.domain.model.McResolution
 import dev.russell.fatebook.domain.model.Question
-import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
+import dev.russell.fatebook.di.DefaultDispatcher
 import dev.russell.fatebook.ui.components.PieChartMath
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -32,18 +40,6 @@ import javax.inject.Inject
 import kotlin.math.roundToInt
 
 enum class FeedFilter { ACTIVE, READY_TO_RESOLVE, RESOLVED }
-
-/**
- * Exclusive multiple-choice questions that are still open for forecasting use
- * the interactive pie editor (options must sum to 100%). Non-exclusive MC
- * options are independent probabilities, so they keep per-option sliders.
- */
-val Question.isPieEditable: Boolean
-    get() = type == QuestionType.MULTIPLE_CHOICE &&
-        exclusiveAnswers &&
-        options.size >= 2 &&
-        options.all { it.resolution == null } &&
-        !resolved && !isReadyToResolve && !isForecastHidden
 
 enum class FeedSort {
     /** Soonest resolve-by date first (resolved filter shows newest first). */
@@ -67,6 +63,7 @@ sealed interface FeedError {
     data class Other(override val message: String) : FeedError
 }
 
+@Immutable
 data class DetailSheetState(
     val question: Question? = null,
     val forecastSliderValue: Float = 0.5f,
@@ -100,12 +97,12 @@ data class SyncErrorEntry(
     val message: String,
 )
 
+@Immutable
 data class FeedUiState(
     val questions: List<Question> = emptyList(),
     val filter: FeedFilter = FeedFilter.ACTIVE,
     val isRefreshing: Boolean = false,
     val error: FeedError? = null,
-    val detail: DetailSheetState = DetailSheetState(),
     val searchQuery: String = "",
     val selectedTag: String? = null,
     val availableTags: List<String> = emptyList(),
@@ -123,6 +120,7 @@ class FeedViewModel @Inject constructor(
     private val repository: QuestionRepository,
     networkMonitor: NetworkMonitor,
     private val prefs: UserPreferences,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private var retryCount = 0
@@ -145,6 +143,11 @@ class FeedViewModel @Inject constructor(
 
     private val sort: Flow<FeedSort> = prefs.feedSort.map { FeedSort.fromName(it) }
 
+    @OptIn(FlowPreview::class)
+    private val debouncedQuery: Flow<String> = _searchQuery
+        .debounce(100)
+        .distinctUntilChanged()
+
     @OptIn(ExperimentalCoroutinesApi::class)
     private val questionsFlow: Flow<List<Question>> = _filter
         .flatMapLatest { filter ->
@@ -154,7 +157,7 @@ class FeedViewModel @Inject constructor(
                 FeedFilter.RESOLVED -> repository.observeResolved()
             }
         }
-        .combine(_searchQuery) { questions, query ->
+        .combine(debouncedQuery) { questions, query ->
             if (query.isBlank()) questions
             else questions.filter { it.title.contains(query, ignoreCase = true) }
         }
@@ -170,16 +173,22 @@ class FeedViewModel @Inject constructor(
                 FeedSort.CREATED_NEWEST -> questions.sortedByDescending { it.createdAt }
             }
         }
+        .distinctUntilChanged()
+        .flowOn(defaultDispatcher)
 
     /** All tag names across the cache, independent of the active filter. */
-    private val availableTags: Flow<List<String>> = repository.observeAll()
-        .map { questions ->
-            questions.flatMap { it.tags }.distinct().sortedBy { it.lowercase() }
-        }
+    private val availableTags: Flow<List<String>> = repository.observeAllTags()
+        .map { tags -> tags.sortedBy { it.lowercase() } }
+
+    // Detail-sheet state is deliberately NOT part of uiState: slider drags and
+    // comment keystrokes update it at frame rate, and folding it into the big
+    // combine would rebuild + deep-compare the entire FeedUiState (including the
+    // question list) on every frame.
+    val detail: StateFlow<DetailSheetState> = _detail.asStateFlow()
 
     val uiState: StateFlow<FeedUiState> = combine(
         listOf(
-            questionsFlow, _filter, _isRefreshing, _error, _detail,
+            questionsFlow, _filter, _isRefreshing, _error,
             _searchQuery, _selectedTag, availableTags, sort, _isInitialLoad,
             _hasMore, _isLoadingMore, isOffline, syncErrors, _showSyncErrorsSheet,
         )
@@ -190,17 +199,16 @@ class FeedViewModel @Inject constructor(
             filter = args[1] as FeedFilter,
             isRefreshing = args[2] as Boolean,
             error = args[3] as FeedError?,
-            detail = args[4] as DetailSheetState,
-            searchQuery = args[5] as String,
-            selectedTag = args[6] as String?,
-            availableTags = args[7] as List<String>,
-            sort = args[8] as FeedSort,
-            isInitialLoad = args[9] as Boolean,
-            hasMore = args[10] as Boolean,
-            isLoadingMore = args[11] as Boolean,
-            isOffline = args[12] as Boolean,
-            syncErrors = args[13] as List<SyncErrorEntry>,
-            showSyncErrorsSheet = args[14] as Boolean,
+            searchQuery = args[4] as String,
+            selectedTag = args[5] as String?,
+            availableTags = args[6] as List<String>,
+            sort = args[7] as FeedSort,
+            isInitialLoad = args[8] as Boolean,
+            hasMore = args[9] as Boolean,
+            isLoadingMore = args[10] as Boolean,
+            isOffline = args[11] as Boolean,
+            syncErrors = args[12] as List<SyncErrorEntry>,
+            showSyncErrorsSheet = args[13] as Boolean,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FeedUiState())
 
@@ -310,18 +318,34 @@ class FeedViewModel @Inject constructor(
         _detail.update { it.copy(forecastSliderValue = value) }
     }
 
-    fun updateForecast() {
+    /**
+     * Shared skeleton for detail-sheet mutations: flip a loading flag, run the
+     * repository call, then dismiss the sheet on success or surface the error
+     * and clear the flag on failure.
+     */
+    private fun detailMutation(
+        errorMessage: String,
+        setLoading: (DetailSheetState, Boolean) -> DetailSheetState,
+        block: suspend (Question) -> Unit,
+    ) {
         val question = _detail.value.question ?: return
         viewModelScope.launch {
-            _detail.update { it.copy(isUpdatingForecast = true) }
+            _detail.update { setLoading(it, true) }
             try {
-                repository.addForecast(question.id, _detail.value.forecastSliderValue.toDouble())
+                block(question)
                 _detail.value = DetailSheetState()
             } catch (e: Exception) {
-                _error.value = classifyError(e, "Failed to update forecast")
-                _detail.update { it.copy(isUpdatingForecast = false) }
+                _error.value = classifyError(e, errorMessage)
+                _detail.update { setLoading(it, false) }
             }
         }
+    }
+
+    fun updateForecast() = detailMutation(
+        "Failed to update forecast",
+        { state, loading -> state.copy(isUpdatingForecast = loading) },
+    ) { question ->
+        repository.addForecast(question.id, _detail.value.forecastSliderValue.toDouble())
     }
 
     // --- Edit ---
@@ -357,22 +381,17 @@ class FeedViewModel @Inject constructor(
     }
 
     fun saveEdit() {
-        val question = _detail.value.question ?: return
         val state = _detail.value
-        viewModelScope.launch {
-            _detail.update { it.copy(isSaving = true) }
-            try {
-                repository.editQuestion(
-                    questionId = question.id,
-                    title = state.editTitle.takeIf { it != question.title },
-                    resolveBy = state.editResolveBy,
-                    notes = state.editNotes.takeIf { it != (question.notes ?: "") },
-                )
-                _detail.value = DetailSheetState()
-            } catch (e: Exception) {
-                _error.value = classifyError(e, "Failed to save changes")
-                _detail.update { it.copy(isSaving = false) }
-            }
+        detailMutation(
+            "Failed to save changes",
+            { s, loading -> s.copy(isSaving = loading) },
+        ) { question ->
+            repository.editQuestion(
+                questionId = question.id,
+                title = state.editTitle.takeIf { it != question.title },
+                resolveBy = state.editResolveBy,
+                notes = state.editNotes.takeIf { it != (question.notes ?: "") },
+            )
         }
     }
 
@@ -386,18 +405,14 @@ class FeedViewModel @Inject constructor(
         _detail.update { it.copy(showDeleteConfirmation = false) }
     }
 
-    fun confirmDelete() {
-        val question = _detail.value.question ?: return
-        viewModelScope.launch {
-            _detail.update { it.copy(isDeleting = true, showDeleteConfirmation = false) }
-            try {
-                repository.deleteQuestion(question.id)
-                _detail.value = DetailSheetState()
-            } catch (e: Exception) {
-                _error.value = classifyError(e, "Failed to delete question")
-                _detail.update { it.copy(isDeleting = false) }
-            }
-        }
+    fun confirmDelete() = detailMutation(
+        "Failed to delete question",
+        { state, loading ->
+            if (loading) state.copy(isDeleting = true, showDeleteConfirmation = false)
+            else state.copy(isDeleting = false)
+        },
+    ) { question ->
+        repository.deleteQuestion(question.id)
     }
 
     // --- Comments ---
@@ -449,21 +464,14 @@ class FeedViewModel @Inject constructor(
      * Quick action for overdue questions: bump the resolve-by date forward
      * from TODAY (an overdue date plus a week could still be in the past).
      */
-    fun pushResolveBy(period: java.time.Period) {
-        val question = _detail.value.question ?: return
-        viewModelScope.launch {
-            _detail.update { it.copy(isSaving = true) }
-            try {
-                repository.editQuestion(
-                    questionId = question.id,
-                    resolveBy = LocalDate.now().plus(period),
-                )
-                _detail.value = DetailSheetState()
-            } catch (e: Exception) {
-                _error.value = classifyError(e, "Failed to update resolve date")
-                _detail.update { it.copy(isSaving = false) }
-            }
-        }
+    fun pushResolveBy(period: java.time.Period) = detailMutation(
+        "Failed to update resolve date",
+        { state, loading -> state.copy(isSaving = loading) },
+    ) { question ->
+        repository.editQuestion(
+            questionId = question.id,
+            resolveBy = LocalDate.now().plus(period),
+        )
     }
 
     // --- Multiple choice ---
@@ -490,17 +498,12 @@ class FeedViewModel @Inject constructor(
 
     fun updateOptionForecast() {
         val state = _detail.value
-        val question = state.question ?: return
         val optionId = state.expandedOptionId ?: return
-        viewModelScope.launch {
-            _detail.update { it.copy(isUpdatingForecast = true) }
-            try {
-                repository.addForecast(question.id, state.optionSliderValue.toDouble(), optionId)
-                _detail.value = DetailSheetState()
-            } catch (e: Exception) {
-                _error.value = classifyError(e, "Failed to update forecast")
-                _detail.update { it.copy(isUpdatingForecast = false) }
-            }
+        detailMutation(
+            "Failed to update forecast",
+            { s, loading -> s.copy(isUpdatingForecast = loading) },
+        ) { question ->
+            repository.addForecast(question.id, state.optionSliderValue.toDouble(), optionId)
         }
     }
 
@@ -518,71 +521,45 @@ class FeedViewModel @Inject constructor(
         val state = _detail.value
         val question = state.question ?: return
         if (state.pieValues.size != question.options.size) return
-        viewModelScope.launch {
-            _detail.update { it.copy(isUpdatingForecast = true) }
-            try {
-                question.options.zip(state.pieValues).forEach { (option, value) ->
-                    val rounded = (value * 100).roundToInt() / 100.0
-                    if (PieChartMath.differsAsPercent(option.latestForecast, rounded)) {
-                        repository.addForecast(question.id, rounded, option.id)
-                    }
+        detailMutation(
+            "Failed to update forecasts",
+            { s, loading -> s.copy(isUpdatingForecast = loading) },
+        ) {
+            question.options.zip(state.pieValues).forEach { (option, value) ->
+                val rounded = (value * 100).roundToInt() / 100.0
+                if (PieChartMath.differsAsPercent(option.latestForecast, rounded)) {
+                    repository.addForecast(question.id, rounded, option.id)
                 }
-                _detail.value = DetailSheetState()
-            } catch (e: Exception) {
-                _error.value = classifyError(e, "Failed to update forecasts")
-                _detail.update { it.copy(isUpdatingForecast = false) }
             }
         }
     }
 
     /**
      * Resolve an exclusive multiple-choice question to an option's text,
-     * [QuestionRepository.MC_RESOLUTION_OTHER], or
-     * [QuestionRepository.MC_RESOLUTION_AMBIGUOUS].
+     * [McResolution.OTHER], or [McResolution.AMBIGUOUS].
      */
-    fun resolveMcExclusive(resolution: String) {
-        val question = _detail.value.question ?: return
-        viewModelScope.launch {
-            _detail.update { it.copy(isResolving = true) }
-            try {
-                repository.resolveMultipleChoice(question.id, resolution)
-                _detail.value = DetailSheetState()
-            } catch (e: Exception) {
-                _error.value = classifyError(e, "Failed to resolve question")
-                _detail.update { it.copy(isResolving = false) }
-            }
-        }
+    fun resolveMcExclusive(resolution: String) = detailMutation(
+        "Failed to resolve question",
+        { state, loading -> state.copy(isResolving = loading) },
+    ) { question ->
+        repository.resolveMultipleChoice(question.id, resolution)
     }
 
     /** Resolve one option of a non-exclusive multiple-choice question. */
-    fun resolveMcOption(optionId: String, resolvedYes: Boolean) {
-        val question = _detail.value.question ?: return
-        viewModelScope.launch {
-            _detail.update { it.copy(isResolving = true) }
-            try {
-                repository.resolveOption(question.id, optionId, resolvedYes)
-                _detail.value = DetailSheetState()
-            } catch (e: Exception) {
-                _error.value = classifyError(e, "Failed to resolve option")
-                _detail.update { it.copy(isResolving = false) }
-            }
-        }
+    fun resolveMcOption(optionId: String, resolvedYes: Boolean) = detailMutation(
+        "Failed to resolve option",
+        { state, loading -> state.copy(isResolving = loading) },
+    ) { question ->
+        repository.resolveOption(question.id, optionId, resolvedYes)
     }
 
     // --- Resolve flow ---
 
-    fun resolveQuestion(resolution: Resolution) {
-        val question = _detail.value.question ?: return
-        viewModelScope.launch {
-            _detail.update { it.copy(isResolving = true) }
-            try {
-                repository.resolveQuestion(question.id, resolution)
-                _detail.value = DetailSheetState()
-            } catch (e: Exception) {
-                _error.value = classifyError(e, "Failed to resolve question")
-                _detail.update { it.copy(isResolving = false) }
-            }
-        }
+    fun resolveQuestion(resolution: Resolution) = detailMutation(
+        "Failed to resolve question",
+        { state, loading -> state.copy(isResolving = loading) },
+    ) { question ->
+        repository.resolveQuestion(question.id, resolution)
     }
 
     fun dismissError() {

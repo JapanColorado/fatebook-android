@@ -7,9 +7,11 @@ import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
+import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -43,9 +45,9 @@ class FeedViewModelTest {
         coEvery { repository.observeActive() } returns flowOf(emptyList())
         coEvery { repository.observeResolved() } returns flowOf(emptyList())
         coEvery { repository.observeReadyToResolve() } returns flowOf(emptyList())
-        coEvery { repository.observeAll() } returns flowOf(emptyList())
+        coEvery { repository.observeAllTags() } returns flowOf(emptyList())
         coEvery { repository.observeErroredMutations() } returns flowOf(emptyList())
-        coEvery { repository.refresh() } returns emptyList()
+        coEvery { repository.refresh() } just Runs
         every { repository.hasMore() } returns false
         every { networkMonitor.isOnline } returns MutableStateFlow(true)
         every { prefs.feedSort } returns flowOf("RESOLVE_BY")
@@ -57,7 +59,7 @@ class FeedViewModelTest {
     }
 
     private fun createViewModel(): FeedViewModel {
-        return FeedViewModel(repository, networkMonitor, prefs)
+        return FeedViewModel(repository, networkMonitor, prefs, testDispatcher)
     }
 
     @Test
@@ -159,7 +161,7 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         // Now make refresh succeed
-        coEvery { repository.refresh() } returns emptyList()
+        coEvery { repository.refresh() } just Runs
         vm.refresh()
         advanceUntilIdle()
 
@@ -169,7 +171,7 @@ class FeedViewModelTest {
     @Test
     fun `loadMore updates hasMore from repository`() = runTest {
         every { repository.hasMore() } returns true
-        coEvery { repository.refresh() } returns emptyList()
+        coEvery { repository.refresh() } just Runs
         coEvery { repository.loadMore() } returns false // no more pages
 
         val vm = createViewModel()
@@ -210,8 +212,8 @@ class FeedViewModelTest {
         vm.showDetailSheet(question)
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detail.question?.id).isEqualTo(question.id)
-        assertThat(vm.uiState.value.detail.forecastSliderValue).isEqualTo(0.8f)
+        assertThat(vm.detail.value.question?.id).isEqualTo(question.id)
+        assertThat(vm.detail.value.forecastSliderValue).isEqualTo(0.8f)
     }
 
     @Test
@@ -226,7 +228,7 @@ class FeedViewModelTest {
         vm.showDetailSheet(question)
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detail.forecastSliderValue).isEqualTo(0.5f)
+        assertThat(vm.detail.value.forecastSliderValue).isEqualTo(0.5f)
     }
 
     @Test
@@ -242,7 +244,7 @@ class FeedViewModelTest {
         vm.dismissDetailSheet()
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     @Test
@@ -261,7 +263,7 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         coVerify { repository.addForecast("q1", any()) }
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     @Test
@@ -300,7 +302,7 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         coVerify { repository.resolveQuestion("q1", Resolution.YES) }
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     @Test
@@ -360,7 +362,7 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         coVerify { repository.deleteQuestion("q1") }
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     @Test
@@ -380,7 +382,7 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         assertThat(vm.uiState.value.error).isNotNull()
-        assertThat(vm.uiState.value.detail.isDeleting).isFalse()
+        assertThat(vm.detail.value.isDeleting).isFalse()
     }
 
     @Test
@@ -398,7 +400,7 @@ class FeedViewModelTest {
         vm.requestDelete()
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detail.showDeleteConfirmation).isTrue()
+        assertThat(vm.detail.value.showDeleteConfirmation).isTrue()
     }
 
     @Test
@@ -416,8 +418,8 @@ class FeedViewModelTest {
         vm.enterEditMode()
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detail.isEditing).isTrue()
-        assertThat(vm.uiState.value.detail.editTitle).isEqualTo("Test question")
+        assertThat(vm.detail.value.isEditing).isTrue()
+        assertThat(vm.detail.value.editTitle).isEqualTo("Test question")
     }
 
     @Test
@@ -438,7 +440,7 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         coVerify { repository.editQuestion(questionId = "q1", title = "New title", resolveBy = any(), notes = any()) }
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     @Test
@@ -464,9 +466,9 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         coVerify { repository.addComment(eq("q1"), eq("Great prediction!")) }
-        assertThat(vm.uiState.value.detail.commentText).isEmpty()
-        assertThat(vm.uiState.value.detail.comments).hasSize(1)
-        assertThat(vm.uiState.value.detail.comments[0].comment).isEqualTo("Great prediction!")
+        assertThat(vm.detail.value.commentText).isEmpty()
+        assertThat(vm.detail.value.comments).hasSize(1)
+        assertThat(vm.detail.value.comments[0].comment).isEqualTo("Great prediction!")
     }
 
     @Test
@@ -560,14 +562,10 @@ class FeedViewModelTest {
     fun `setSelectedTag filters questions and availableTags lists all cache tags`() = runTest {
         val tagged = TestData.question(id = "q1", tags = listOf("work"))
         val untagged = TestData.question(id = "q2")
-        val resolvedTagged = TestData.question(
-            id = "q3",
-            resolved = true,
-            resolution = Resolution.YES,
-            tags = listOf("health"),
-        )
         coEvery { repository.observeActive() } returns flowOf(listOf(tagged, untagged))
-        coEvery { repository.observeAll() } returns flowOf(listOf(tagged, untagged, resolvedTagged))
+        // Tags come from the whole cache (incl. resolved questions), via the
+        // repository's lightweight projection.
+        coEvery { repository.observeAllTags() } returns flowOf(listOf("work", "health"))
 
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -600,7 +598,7 @@ class FeedViewModelTest {
         vm.openQuestionById("q1")
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detail.question?.id).isEqualTo("q1")
+        assertThat(vm.detail.value.question?.id).isEqualTo("q1")
     }
 
     @Test
@@ -616,7 +614,7 @@ class FeedViewModelTest {
         vm.openQuestionById("nope")
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     // --- forecast history + push resolve date ---
@@ -643,7 +641,7 @@ class FeedViewModelTest {
         vm.showDetailSheet(question)
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detail.forecastHistory).isEqualTo(history)
+        assertThat(vm.detail.value.forecastHistory).isEqualTo(history)
     }
 
     @Test
@@ -667,7 +665,7 @@ class FeedViewModelTest {
                 resolveBy = java.time.LocalDate.now().plusWeeks(1),
             )
         }
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     // --- sort ---
@@ -734,13 +732,13 @@ class FeedViewModelTest {
         vm.toggleOptionExpanded("optA")
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detail.expandedOptionId).isEqualTo("optA")
-        assertThat(vm.uiState.value.detail.optionSliderValue).isEqualTo(0.4f)
+        assertThat(vm.detail.value.expandedOptionId).isEqualTo("optA")
+        assertThat(vm.detail.value.optionSliderValue).isEqualTo(0.4f)
 
         // Tapping again collapses.
         vm.toggleOptionExpanded("optA")
         advanceUntilIdle()
-        assertThat(vm.uiState.value.detail.expandedOptionId).isNull()
+        assertThat(vm.detail.value.expandedOptionId).isNull()
     }
 
     @Test
@@ -760,7 +758,7 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         coVerify { repository.addForecast("mc1", 0.75, "optB") }
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     @Test
@@ -775,7 +773,7 @@ class FeedViewModelTest {
         vm.showDetailSheet(mcQuestion())
         advanceUntilIdle()
 
-        val pie = vm.uiState.value.detail.pieValues
+        val pie = vm.detail.value.pieValues
         assertThat(pie).hasSize(2)
         assertThat(pie[0]).isWithin(0.001f).of(0.4f)
         assertThat(pie[1]).isWithin(0.001f).of(0.6f)
@@ -792,7 +790,7 @@ class FeedViewModelTest {
         vm.showDetailSheet(mcQuestion().copy(exclusiveAnswers = false))
         advanceUntilIdle()
 
-        assertThat(vm.uiState.value.detail.pieValues).isEmpty()
+        assertThat(vm.detail.value.pieValues).isEmpty()
     }
 
     @Test
@@ -815,7 +813,7 @@ class FeedViewModelTest {
         coVerify(exactly = 1) { repository.addForecast("mc1", 0.3, "optA") }
         // optB had no forecast at all, so it's always submitted.
         coVerify(exactly = 1) { repository.addForecast("mc1", 0.7, "optB") }
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     @Test
@@ -838,7 +836,7 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 0) { repository.addForecast(any(), any(), any()) }
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     @Test
@@ -855,7 +853,7 @@ class FeedViewModelTest {
         advanceUntilIdle()
 
         coVerify { repository.resolveMultipleChoice("mc1", "Beta") }
-        assertThat(vm.uiState.value.detail.question).isNull()
+        assertThat(vm.detail.value.question).isNull()
     }
 
     @Test

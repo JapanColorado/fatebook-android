@@ -27,8 +27,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // Opening the app is a cheap moment to freshen the widget.
-        lifecycleScope.launch { runCatching { widgetRefresher.refresh() } }
+        // Opening the app is a cheap moment to freshen the widget — but only on
+        // a real launch, not on rotation/theme-change recreations.
+        if (savedInstanceState == null) {
+            lifecycleScope.launch { runCatching { widgetRefresher.refresh() } }
+        }
         val openCreate = intent.getBooleanExtra(NotificationHelper.EXTRA_OPEN_CREATE, false)
         val openResolveFilter = intent.getBooleanExtra(
             NotificationHelper.EXTRA_OPEN_RESOLVE_FILTER, false,

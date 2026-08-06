@@ -42,6 +42,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -49,9 +51,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Forecast
+import dev.russell.fatebook.domain.model.McResolution
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
@@ -62,7 +64,6 @@ import dev.russell.fatebook.ui.components.ProbabilityPieChart
 import dev.russell.fatebook.ui.components.ProbabilitySlider
 import dev.russell.fatebook.ui.components.TagChipRow
 import dev.russell.fatebook.ui.feed.DetailSheetState
-import dev.russell.fatebook.ui.feed.isPieEditable
 import dev.russell.fatebook.ui.theme.ResolveAmbiguous
 import dev.russell.fatebook.ui.theme.ResolveNo
 import dev.russell.fatebook.ui.theme.ResolveYes
@@ -74,6 +75,22 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
+/**
+ * Callbacks for multiple-choice forecasting and resolution, bundled so a new
+ * MC action doesn't ripple through every composable signature on the way to
+ * [MultipleChoiceSection].
+ */
+@Immutable
+data class McActions(
+    val onToggleOptionExpanded: (String) -> Unit = {},
+    val onOptionSliderChange: (Float) -> Unit = {},
+    val onUpdateOptionForecast: () -> Unit = {},
+    val onPieValuesChange: (List<Float>) -> Unit = {},
+    val onUpdatePieForecasts: () -> Unit = {},
+    val onResolveExclusive: (String) -> Unit = {},
+    val onResolveOption: (optionId: String, resolvedYes: Boolean) -> Unit = { _, _ -> },
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuestionDetailSheet(
@@ -82,13 +99,7 @@ fun QuestionDetailSheet(
     onForecastSliderChange: (Float) -> Unit,
     onUpdateForecast: () -> Unit,
     onResolve: (Resolution) -> Unit,
-    onToggleOptionExpanded: (String) -> Unit = {},
-    onOptionSliderChange: (Float) -> Unit = {},
-    onUpdateOptionForecast: () -> Unit = {},
-    onPieValuesChange: (List<Float>) -> Unit = {},
-    onUpdatePieForecasts: () -> Unit = {},
-    onResolveMcExclusive: (String) -> Unit = {},
-    onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit = { _, _ -> },
+    mcActions: McActions = McActions(),
     onPushResolveBy: (Period) -> Unit = {},
     onEnterEditMode: () -> Unit,
     onEditTitleChange: (String) -> Unit,
@@ -106,7 +117,7 @@ fun QuestionDetailSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
-    val dateFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
+    val dateFormatter = monthDayYearFormatter
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -135,13 +146,7 @@ fun QuestionDetailSheet(
                     onForecastSliderChange = onForecastSliderChange,
                     onUpdateForecast = onUpdateForecast,
                     onResolve = onResolve,
-                    onToggleOptionExpanded = onToggleOptionExpanded,
-                    onOptionSliderChange = onOptionSliderChange,
-                    onUpdateOptionForecast = onUpdateOptionForecast,
-                    onPieValuesChange = onPieValuesChange,
-                    onUpdatePieForecasts = onUpdatePieForecasts,
-                    onResolveMcExclusive = onResolveMcExclusive,
-                    onResolveMcOption = onResolveMcOption,
+                    mcActions = mcActions,
                     onPushResolveBy = onPushResolveBy,
                     onEnterEditMode = onEnterEditMode,
                     onDeleteClick = onDeleteClick,
@@ -192,13 +197,7 @@ private fun ColumnScope.ReadModeContent(
     onForecastSliderChange: (Float) -> Unit,
     onUpdateForecast: () -> Unit,
     onResolve: (Resolution) -> Unit,
-    onToggleOptionExpanded: (String) -> Unit,
-    onOptionSliderChange: (Float) -> Unit,
-    onUpdateOptionForecast: () -> Unit,
-    onPieValuesChange: (List<Float>) -> Unit,
-    onUpdatePieForecasts: () -> Unit,
-    onResolveMcExclusive: (String) -> Unit,
-    onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit,
+    mcActions: McActions,
     onPushResolveBy: (Period) -> Unit,
     onEnterEditMode: () -> Unit,
     onDeleteClick: () -> Unit,
@@ -268,7 +267,7 @@ private fun ColumnScope.ReadModeContent(
     if (question.resolved && question.resolution != null) {
         Spacer(modifier = Modifier.height(8.dp))
         val (label, color) = if (question.type == QuestionType.MULTIPLE_CHOICE) {
-            val winner = question.options.firstOrNull { it.resolution == Resolution.YES }
+            val winner = question.winningOption
             when {
                 question.resolution == Resolution.AMBIGUOUS ->
                     "Resolved: Ambiguous" to ResolveAmbiguous
@@ -295,13 +294,7 @@ private fun ColumnScope.ReadModeContent(
         MultipleChoiceSection(
             question = question,
             detailState = detailState,
-            onToggleOptionExpanded = onToggleOptionExpanded,
-            onOptionSliderChange = onOptionSliderChange,
-            onUpdateOptionForecast = onUpdateOptionForecast,
-            onPieValuesChange = onPieValuesChange,
-            onUpdatePieForecasts = onUpdatePieForecasts,
-            onResolveMcExclusive = onResolveMcExclusive,
-            onResolveMcOption = onResolveMcOption,
+            actions = mcActions,
         )
         if (detailState.isResolving) {
             Spacer(modifier = Modifier.height(12.dp))
@@ -373,20 +366,11 @@ private fun ColumnScope.ReadModeContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        Button(
+        SubmittingButton(
+            label = "Update Forecast",
+            submitting = detailState.isUpdatingForecast,
             onClick = onUpdateForecast,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !detailState.isUpdatingForecast,
-        ) {
-            if (detailState.isUpdatingForecast) {
-                CircularProgressIndicator(
-                    modifier = Modifier.height(20.dp),
-                    strokeWidth = 2.dp,
-                )
-            } else {
-                Text("Update Forecast")
-            }
-        }
+        )
     }
 
     // Quick action for overdue questions: not ready to call it yet? Push the
@@ -475,9 +459,15 @@ private fun ColumnScope.ReadModeContent(
 
     // Forecast history — only interesting when someone besides you has
     // forecast (shared questions). Server-scrubbed hidden forecasts arrive
-    // with a null value and are skipped.
-    val visibleHistory = detailState.forecastHistory.filter { it.forecast != null }
-    if (visibleHistory.map { it.userId }.distinct().size > 1) {
+    // with a null value and are skipped. Remembered because slider/pie drags
+    // recompose this content every frame.
+    val visibleHistory = remember(detailState.forecastHistory) {
+        detailState.forecastHistory.filter { it.forecast != null }
+    }
+    val hasSharedHistory = remember(visibleHistory) {
+        visibleHistory.map { it.userId }.distinct().size > 1
+    }
+    if (hasSharedHistory) {
         Spacer(modifier = Modifier.height(12.dp))
         HorizontalDivider()
         Spacer(modifier = Modifier.height(12.dp))
@@ -486,7 +476,9 @@ private fun ColumnScope.ReadModeContent(
             style = MaterialTheme.typography.titleSmall,
         )
         Spacer(modifier = Modifier.height(8.dp))
-        val optionTextById = question.options.associate { it.id to it.text }
+        val optionTextById = remember(question.options) {
+            question.options.associate { it.id to it.text }
+        }
         visibleHistory.forEach { forecast ->
             ForecastHistoryRow(
                 forecast = forecast,
@@ -573,13 +565,7 @@ private fun ColumnScope.ReadModeContent(
 private fun MultipleChoiceSection(
     question: Question,
     detailState: DetailSheetState,
-    onToggleOptionExpanded: (String) -> Unit,
-    onOptionSliderChange: (Float) -> Unit,
-    onUpdateOptionForecast: () -> Unit,
-    onPieValuesChange: (List<Float>) -> Unit,
-    onUpdatePieForecasts: () -> Unit,
-    onResolveMcExclusive: (String) -> Unit,
-    onResolveMcOption: (optionId: String, resolvedYes: Boolean) -> Unit,
+    actions: McActions,
 ) {
     val canForecast = !question.resolved && !question.isForecastHidden
     val showResolveButtons = question.isReadyToResolve
@@ -594,8 +580,8 @@ private fun MultipleChoiceSection(
         PieForecastEditor(
             question = question,
             detailState = detailState,
-            onPieValuesChange = onPieValuesChange,
-            onUpdatePieForecasts = onUpdatePieForecasts,
+            onPieValuesChange = actions.onPieValuesChange,
+            onUpdatePieForecasts = actions.onUpdatePieForecasts,
         )
         return
     }
@@ -607,7 +593,7 @@ private fun MultipleChoiceSection(
                 .fillMaxWidth()
                 .then(
                     if (canForecast && !showResolveButtons && option.resolution == null) {
-                        Modifier.clickable { onToggleOptionExpanded(option.id) }
+                        Modifier.clickable { actions.onToggleOptionExpanded(option.id) }
                     } else {
                         Modifier
                     },
@@ -638,13 +624,13 @@ private fun MultipleChoiceSection(
                 showResolveButtons && !question.exclusiveAnswers -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(
-                            onClick = { onResolveMcOption(option.id, true) },
+                            onClick = { actions.onResolveOption(option.id, true) },
                             enabled = !detailState.isResolving,
                         ) {
                             Text("YES", color = ResolveYes, fontWeight = FontWeight.Bold)
                         }
                         TextButton(
-                            onClick = { onResolveMcOption(option.id, false) },
+                            onClick = { actions.onResolveOption(option.id, false) },
                             enabled = !detailState.isResolving,
                         ) {
                             Text("NO", color = ResolveNo, fontWeight = FontWeight.Bold)
@@ -673,23 +659,14 @@ private fun MultipleChoiceSection(
         if (expanded && canForecast && !showResolveButtons) {
             ProbabilitySlider(
                 value = detailState.optionSliderValue,
-                onValueChange = onOptionSliderChange,
+                onValueChange = actions.onOptionSliderChange,
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Button(
-                onClick = onUpdateOptionForecast,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !detailState.isUpdatingForecast,
-            ) {
-                if (detailState.isUpdatingForecast) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.height(20.dp),
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text("Update Forecast")
-                }
-            }
+            SubmittingButton(
+                label = "Update Forecast",
+                submitting = detailState.isUpdatingForecast,
+                onClick = actions.onUpdateOptionForecast,
+            )
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
@@ -704,7 +681,7 @@ private fun MultipleChoiceSection(
         Spacer(modifier = Modifier.height(8.dp))
         question.options.forEach { option ->
             Button(
-                onClick = { onResolveMcExclusive(option.text) },
+                onClick = { actions.onResolveExclusive(option.text) },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !detailState.isResolving,
                 colors = ButtonDefaults.buttonColors(containerColor = ResolveYes),
@@ -714,7 +691,7 @@ private fun MultipleChoiceSection(
             Spacer(modifier = Modifier.height(8.dp))
         }
         OutlinedButton(
-            onClick = { onResolveMcExclusive(QuestionRepository.MC_RESOLUTION_OTHER) },
+            onClick = { actions.onResolveExclusive(McResolution.OTHER) },
             modifier = Modifier.fillMaxWidth(),
             enabled = !detailState.isResolving,
         ) {
@@ -722,7 +699,7 @@ private fun MultipleChoiceSection(
         }
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedButton(
-            onClick = { onResolveMcExclusive(QuestionRepository.MC_RESOLUTION_AMBIGUOUS) },
+            onClick = { actions.onResolveExclusive(McResolution.AMBIGUOUS) },
             modifier = Modifier.fillMaxWidth(),
             enabled = !detailState.isResolving,
         ) {
@@ -731,7 +708,7 @@ private fun MultipleChoiceSection(
     } else if (showResolveButtons && !question.exclusiveAnswers) {
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedButton(
-            onClick = { onResolveMcExclusive(QuestionRepository.MC_RESOLUTION_AMBIGUOUS) },
+            onClick = { actions.onResolveExclusive(McResolution.AMBIGUOUS) },
             modifier = Modifier.fillMaxWidth(),
             enabled = !detailState.isResolving,
         ) {
@@ -800,18 +777,32 @@ private fun PieForecastEditor(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(modifier = Modifier.height(12.dp))
-    Button(
+    SubmittingButton(
+        label = "Update Forecasts",
+        submitting = detailState.isUpdatingForecast,
         onClick = onUpdatePieForecasts,
+    )
+}
+
+/** Full-width submit button that swaps its label for a spinner while busy. */
+@Composable
+private fun SubmittingButton(
+    label: String,
+    submitting: Boolean,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        enabled = !detailState.isUpdatingForecast,
+        enabled = !submitting,
     ) {
-        if (detailState.isUpdatingForecast) {
+        if (submitting) {
             CircularProgressIndicator(
                 modifier = Modifier.height(20.dp),
                 strokeWidth = 2.dp,
             )
         } else {
-            Text("Update Forecasts")
+            Text(label)
         }
     }
 }
@@ -955,3 +946,5 @@ private fun CommentItem(comment: Comment, dateFormatter: DateTimeFormatter) {
         )
     }
 }
+
+private val monthDayYearFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")

@@ -35,6 +35,10 @@ interface QuestionDao {
     @Query("SELECT * FROM questions WHERE resolved = 1 ORDER BY resolveByEpochMs DESC")
     fun observeResolved(): Flow<List<QuestionEntity>>
 
+    /** Just the tagsJson column — enough for the feed's tag filter without a full join. */
+    @Query("SELECT tagsJson FROM questions")
+    fun observeAllTagsJson(): Flow<List<String>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(questions: List<QuestionEntity>)
 
@@ -50,6 +54,9 @@ interface QuestionDao {
 
     @Query("SELECT * FROM questions WHERE id = :questionId")
     suspend fun getById(questionId: String): QuestionEntity?
+
+    @Query("SELECT * FROM questions WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<String>): List<QuestionEntity>
 
     /**
      * Find a non-local question matching [title] whose createdAt is within

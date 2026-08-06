@@ -24,11 +24,13 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class UserPreferences @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-
-    private val encryptedPrefs: SharedPreferences =
+    // Lazy: MasterKey/Tink initialization takes 100-400ms and this singleton is
+    // built during the Hilt graph in Application.onCreate — defer the cost to
+    // the first secure read instead of every cold start.
+    private val encryptedPrefs: SharedPreferences by lazy {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
         EncryptedSharedPreferences.create(
             context,
             "fatebook_secure_prefs",
@@ -36,12 +38,31 @@ class UserPreferences @Inject constructor(
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
+    }
 
     // --- API Key (encrypted) ---
 
+    // Cached after first read: ApiKeyInterceptor reads this on every HTTP
+    // request, and each uncached read is an AES-GCM decrypt.
+    @Volatile
+    private var cachedApiKey: String? = null
+
+    @Volatile
+    private var apiKeyLoaded = false
+
     var apiKey: String?
-        get() = encryptedPrefs.getString(KEY_API_KEY, null)
-        set(value) = encryptedPrefs.edit().putString(KEY_API_KEY, value).apply()
+        get() {
+            if (!apiKeyLoaded) {
+                cachedApiKey = encryptedPrefs.getString(KEY_API_KEY, null)
+                apiKeyLoaded = true
+            }
+            return cachedApiKey
+        }
+        set(value) {
+            encryptedPrefs.edit().putString(KEY_API_KEY, value).apply()
+            cachedApiKey = value
+            apiKeyLoaded = true
+        }
 
     val hasApiKey: Boolean
         get() = !apiKey.isNullOrBlank()
@@ -101,6 +122,8 @@ class UserPreferences @Inject constructor(
 
     fun clearAll() {
         encryptedPrefs.edit().clear().apply()
+        cachedApiKey = null
+        apiKeyLoaded = true
     }
 
     companion object {

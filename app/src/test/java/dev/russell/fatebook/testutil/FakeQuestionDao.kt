@@ -19,6 +19,9 @@ class FakeQuestionDao : QuestionDao {
     var deleteByIdsNotInCallCount = 0
         private set
 
+    var upsertAllCallCount = 0
+        private set
+
     override fun observeAll(): Flow<List<QuestionEntity>> =
         _questions.map { it.sortedBy { q -> q.resolveByEpochMs } }
 
@@ -41,7 +44,11 @@ class FakeQuestionDao : QuestionDao {
             list.filter { it.resolved }.sortedByDescending { it.resolveByEpochMs }
         }
 
+    override fun observeAllTagsJson(): Flow<List<String>> =
+        _questions.map { list -> list.map { it.tagsJson } }
+
     override suspend fun upsertAll(questions: List<QuestionEntity>) {
+        upsertAllCallCount++
         val current = _questions.value.toMutableList()
         for (q in questions) {
             current.removeAll { it.id == q.id }
@@ -67,6 +74,9 @@ class FakeQuestionDao : QuestionDao {
     override suspend fun getById(questionId: String): QuestionEntity? {
         return _questions.value.find { it.id == questionId }
     }
+
+    override suspend fun getByIds(ids: List<String>): List<QuestionEntity> =
+        _questions.value.filter { it.id in ids }
 
     override suspend fun getAllIds(): List<String> =
         _questions.value.map { it.id }

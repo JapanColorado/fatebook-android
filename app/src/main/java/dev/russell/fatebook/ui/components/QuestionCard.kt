@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.QuestionType
-import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.ui.theme.ResolveAmbiguous
 import dev.russell.fatebook.ui.theme.ResolveNo
 import dev.russell.fatebook.ui.theme.ResolveYes
@@ -46,6 +45,20 @@ fun QuestionCard(
     // keying on question.id alone leaves a stale closure when fields change.
     val currentQuestion by rememberUpdatedState(question)
     val cardClick = remember(onClick) { { onClick(currentQuestion) } }
+    // Clock reads (Instant.now / LocalDate.now) and the allocating resolveByDate
+    // getter are per-question facts for display purposes — compute once per
+    // question instead of on every recomposition.
+    val dateLine = remember(question) {
+        if (question.resolved) {
+            "Resolved ${absoluteDate(question.resolveByDate)}"
+        } else {
+            "Resolution ${relativeDate(question.resolveByDate)}"
+        }
+    }
+    val forecastHidden = remember(question) { question.isForecastHidden }
+    val predictedLine = remember(question) {
+        question.latestForecastAt?.let { "Predicted ${timeAgo(it)}" }
+    }
     Card(
         onClick = cardClick,
         modifier = modifier.fillMaxWidth(),
@@ -71,11 +84,7 @@ fun QuestionCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = if (question.resolved) {
-                        "Resolved ${absoluteDate(question.resolveByDate)}"
-                    } else {
-                        "Resolution ${relativeDate(question.resolveByDate)}"
-                    },
+                    text = dateLine,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -109,7 +118,7 @@ fun QuestionCard(
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                     )
-                } else if (question.isForecastHidden) {
+                } else if (forecastHidden) {
                     Text(
                         text = "Hidden",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -126,14 +135,12 @@ fun QuestionCard(
                         )
                     }
                 }
-                if (!question.isForecastHidden) {
-                    question.latestForecastAt?.let { forecastAt ->
-                        Text(
-                            text = "Predicted ${timeAgo(forecastAt)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                if (!forecastHidden && predictedLine != null) {
+                    Text(
+                        text = predictedLine,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -187,7 +194,7 @@ private fun TagChip(text: String) {
 @Composable
 private fun MultipleChoiceSummary(question: Question) {
     if (question.resolved) {
-        val winner = question.options.firstOrNull { it.resolution == Resolution.YES }
+        val winner = question.winningOption
         Text(
             text = winner?.text ?: "N/A",
             color = if (winner != null) ResolveYes else ResolveAmbiguous,

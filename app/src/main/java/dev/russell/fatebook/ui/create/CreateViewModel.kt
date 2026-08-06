@@ -58,12 +58,17 @@ class CreateViewModel @Inject constructor(
 
     /** Turn the current tag input into a chip (no-op for blank or duplicate). */
     fun addTag() {
-        val tag = _state.value.tagInput.trim()
-        if (tag.isEmpty()) return
+        if (_state.value.tagInput.isBlank()) return
         _state.value = _state.value.copy(
-            tags = if (tag in _state.value.tags) _state.value.tags else _state.value.tags + tag,
+            tags = withTagInput(_state.value.tags, _state.value.tagInput),
             tagInput = "",
         )
+    }
+
+    /** [tags] plus the trimmed [input], unless it's blank or already present. */
+    private fun withTagInput(tags: List<String>, input: String): List<String> {
+        val tag = input.trim()
+        return if (tag.isEmpty() || tag in tags) tags else tags + tag
     }
 
     fun removeTag(tag: String) {
@@ -83,13 +88,7 @@ class CreateViewModel @Inject constructor(
             _state.value = current.copy(isSubmitting = true, error = null)
             try {
                 // A tag still sitting in the input field counts too.
-                val pendingTag = current.tagInput.trim()
-                val tags =
-                    if (pendingTag.isNotEmpty() && pendingTag !in current.tags) {
-                        current.tags + pendingTag
-                    } else {
-                        current.tags
-                    }
+                val tags = withTagInput(current.tags, current.tagInput)
                 repository.createQuestion(
                     title = current.title.trim(),
                     resolveBy = current.resolveBy,

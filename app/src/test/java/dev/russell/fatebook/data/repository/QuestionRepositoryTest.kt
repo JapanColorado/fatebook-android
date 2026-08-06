@@ -12,6 +12,7 @@ import dev.russell.fatebook.data.remote.dto.TagDto
 import dev.russell.fatebook.data.remote.dto.UserDto
 import dev.russell.fatebook.data.sync.MutationEnqueuer
 import dev.russell.fatebook.data.sync.SyncScheduler
+import dev.russell.fatebook.domain.model.McResolution
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.FakeCommentDao
@@ -24,6 +25,7 @@ import dev.russell.fatebook.testutil.TestData
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -71,6 +73,7 @@ class QuestionRepositoryTest {
             enqueuer = enqueuer,
             syncScheduler = syncScheduler,
             moshi = Moshi.Builder().build(),
+            defaultDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
         )
     }
 
@@ -136,15 +139,72 @@ class QuestionRepositoryTest {
     }
 
     @Test
-    fun `refresh returns domain questions`() = runTest {
+    fun `refresh makes domain questions observable`() = runTest {
         val dto = TestData.questionDto(id = "q1", title = "Test?")
         api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto)) }
 
-        val result = repository.refresh()
+        repository.refresh()
 
+        val result = repository.observeAll().first()
         assertThat(result).hasSize(1)
         assertThat(result[0].id).isEqualTo("q1")
         assertThat(result[0].title).isEqualTo("Test?")
+    }
+
+    private fun forecastDto(forecast: Double, createdAt: String = "2020-01-02T00:00:00Z") =
+        ForecastDto(
+            userId = "user1",
+            forecast = forecast,
+            createdAt = createdAt,
+            hideForecastsUntil = null,
+        )
+
+    @Test
+    fun `refresh with identical payload writes nothing`() = runTest {
+        val dto = TestData.questionDto(
+            id = "q1",
+            forecasts = listOf(forecastDto(forecast = 0.6)),
+        )
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(dto)) }
+        repository.refresh()
+        val questionWrites = dao.upsertAllCallCount
+        val forecastWrites = forecastDao.upsertAllCallCount
+
+        repository.refresh()
+
+        assertThat(dao.upsertAllCallCount).isEqualTo(questionWrites)
+        assertThat(forecastDao.upsertAllCallCount).isEqualTo(forecastWrites)
+    }
+
+    @Test
+    fun `refresh with a changed forecast rewrites only that question's children`() = runTest {
+        val q1 = TestData.questionDto(
+            id = "q1",
+            forecasts = listOf(forecastDto(forecast = 0.6)),
+        )
+        val q2 = TestData.questionDto(
+            id = "q2",
+            forecasts = listOf(forecastDto(forecast = 0.3)),
+        )
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(q1, q2)) }
+        repository.refresh()
+
+        // q1 gains a forecast; q2 is untouched.
+        val q1Updated = TestData.questionDto(
+            id = "q1",
+            forecasts = listOf(
+                forecastDto(forecast = 0.6),
+                forecastDto(forecast = 0.8, createdAt = "2020-01-03T00:00:00Z"),
+            ),
+        )
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(q1Updated, q2)) }
+        val forecastWrites = forecastDao.upsertAllCallCount
+
+        repository.refresh()
+
+        assertThat(forecastDao.upsertAllCallCount).isEqualTo(forecastWrites + 1)
+        assertThat(forecastDao.storedForecasts.filter { it.questionId == "q1" }).hasSize(2)
+        assertThat(forecastDao.storedForecasts.filter { it.questionId == "q2" }).hasSize(1)
     }
 
     @Test
@@ -225,10 +285,9 @@ class QuestionRepositoryTest {
             TestData.questionsResponse(items = listOf(binary, multi, quantity))
         }
 
-        val result = repository.refresh()
+        repository.refresh()
 
         assertThat(dao.storedQuestions.map { it.id }).containsExactly("q1", "q2", "q3")
-        assertThat(result.map { it.id }).containsExactly("q1", "q2", "q3")
     }
 
     @Test
@@ -236,11 +295,13 @@ class QuestionRepositoryTest {
         val nullType = TestData.questionDto(id = "q1", questionType = null)
         api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(nullType)) }
 
-        val result = repository.refresh()
+        repository.refresh()
 
+        val result = repository.observeAll().first()
         assertThat(dao.storedQuestions).hasSize(1)
         assertThat(result).hasSize(1)
         assertThat(result[0].id).isEqualTo("q1")
+        assertThat(result[0].type).isEqualTo(QuestionType.BINARY)
     }
 
     // --- createQuestion (optimistic) ---
@@ -911,7 +972,7 @@ class QuestionRepositoryTest {
             ),
         )
 
-        repository.resolveMultipleChoice("q1", QuestionRepository.MC_RESOLUTION_OTHER)
+        repository.resolveMultipleChoice("q1", McResolution.OTHER)
 
         assertThat(optionDao.storedOptions.map { it.resolution }).containsExactly("NO", "NO")
         assertThat(dao.storedQuestions.single().resolution).isEqualTo("NO")
@@ -924,7 +985,7 @@ class QuestionRepositoryTest {
             listOf(TestData.optionEntity(id = "optA", questionId = "q1", text = "Alpha")),
         )
 
-        repository.resolveMultipleChoice("q1", QuestionRepository.MC_RESOLUTION_AMBIGUOUS)
+        repository.resolveMultipleChoice("q1", McResolution.AMBIGUOUS)
 
         assertThat(optionDao.storedOptions.single().resolution).isNull()
         assertThat(dao.storedQuestions.single().resolution).isEqualTo("AMBIGUOUS")

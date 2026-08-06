@@ -17,7 +17,6 @@ import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.remote.FatebookApi
 import dev.russell.fatebook.data.remote.dto.CommentDto
 import dev.russell.fatebook.data.remote.dto.ForecastDto
-import dev.russell.fatebook.data.remote.dto.OptionDto
 import dev.russell.fatebook.data.remote.dto.QuestionDto
 import dev.russell.fatebook.data.sync.AddCommentPayload
 import dev.russell.fatebook.data.sync.AddForecastPayload
@@ -29,20 +28,26 @@ import dev.russell.fatebook.data.sync.SetSharedPayload
 import dev.russell.fatebook.data.sync.SyncScheduler
 import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Forecast
+import dev.russell.fatebook.domain.model.McResolution
 import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.QuestionOption
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
+import dev.russell.fatebook.di.DefaultDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -59,6 +64,7 @@ class QuestionRepository @Inject constructor(
     private val enqueuer: MutationEnqueuer,
     private val syncScheduler: SyncScheduler,
     moshi: Moshi,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) {
     private var nextCursor: Int? = null
 
@@ -76,6 +82,9 @@ class QuestionRepository @Inject constructor(
             val optionsByQuestion = options.groupBy { it.questionId }
             entities.map { it.toDomain(optionsByQuestion[it.id].orEmpty()) }
         }.distinctUntilChanged()
+            // The groupBy + per-entity mapping + deep list equality above must not
+            // run on the collector's (Main) dispatcher.
+            .flowOn(defaultDispatcher)
 
     /** Observe cached questions, mapped to domain models. */
     fun observeActive(): Flow<List<Question>> =
@@ -115,25 +124,29 @@ class QuestionRepository @Inject constructor(
     fun observeAllForecasts(): Flow<List<ForecastEntity>> =
         forecastDao.observeAll()
 
-    fun observeAllOptions(): Flow<List<OptionEntity>> =
-        optionDao.observeAll()
+    /** All tag names across the cache — a lightweight projection, no domain mapping. */
+    fun observeAllTags(): Flow<List<String>> =
+        dao.observeAllTagsJson()
+            .map { rows -> rows.flatMap { parseTags(it) }.distinct() }
+            .distinctUntilChanged()
+            .flowOn(defaultDispatcher)
 
     /**
      * Fetch first page from API and merge into local cache as a single transaction.
      * Questions not present in the response are pruned, EXCEPT locally-created ones
      * (id prefixed `local-`) that haven't synced yet.
      */
-    suspend fun refresh(): List<Question> {
+    suspend fun refresh() {
         // In full-history mode a page-1-only refresh would prune every question
         // beyond the first page, so refresh must re-fetch everything.
         if (prefs.fullHistorySynced.first()) {
-            return loadAllQuestions()
+            loadAllQuestions()
+            return
         }
         val response = api.getQuestions()
         nextCursor = response.nextCursor
         commitDtos(response.items, prune = true)
         captureDisplayName(response.items)
-        return response.items.map { it.toDomain() }
     }
 
     /** Load the next page and append to cache. Returns true if more pages exist. */
@@ -147,7 +160,7 @@ class QuestionRepository @Inject constructor(
 
     fun hasMore(): Boolean = nextCursor != null
 
-    suspend fun loadAllQuestions(onProgress: (loadedCount: Int) -> Unit = {}): List<Question> {
+    suspend fun loadAllQuestions(onProgress: (loadedCount: Int) -> Unit = {}) {
         val collected = mutableListOf<QuestionDto>()
         var cursor: Int? = null
         do {
@@ -159,30 +172,82 @@ class QuestionRepository @Inject constructor(
         } while (cursor != null)
         commitDtos(collected, prune = true)
         captureDisplayName(collected)
-        return collected.map { it.toDomain() }
     }
 
+    private class DtoChildren(
+        val forecasts: List<ForecastEntity>,
+        val comments: List<CommentEntity>,
+        val options: List<OptionEntity>,
+    )
+
+    /**
+     * Commit a page of DTOs, writing only rows that actually changed. Room's
+     * invalidation is table-granular, so a blind delete-and-reinsert of every
+     * row would re-emit every observed Flow (and re-run all the mapping and
+     * scoring pipelines downstream) on every refresh — including the no-change
+     * refreshes that run after each synced mutation.
+     */
     private suspend fun commitDtos(dtos: List<QuestionDto>, prune: Boolean) {
-        val questionEntities = dtos.map { it.toEntity() }
+        // DTO→entity mapping (date parsing, tags serialization) is CPU work that
+        // must not run on the caller's (often Main) dispatcher.
+        val (questionEntities, childrenById) = withContext(defaultDispatcher) {
+            dtos.map { it.toEntity() } to dtos.associateBy(
+                { it.id },
+                { DtoChildren(it.toForecastEntities(), it.toCommentEntities(), it.toOptionEntities()) },
+            )
+        }
         // Keep server ids from the response + any local-only ids that haven't synced.
         val localOnlyIds = dao.getAllIds()
             .filter { it.startsWith(PendingMutationEntity.LOCAL_ID_PREFIX) }
         val keepIds = dtos.map { it.id } + localOnlyIds
         transactor.transact {
-            dao.upsertAll(questionEntities)
+            val existingById = dao.getByIds(dtos.map { it.id }).associateBy { it.id }
+            // lastSyncedEpochMs is stamped at mapping time and never matches the
+            // cached row — ignore it when deciding whether anything changed.
+            val changedIds = questionEntities.filter { new ->
+                val old = existingById[new.id] ?: return@filter true
+                old.copy(lastSyncedEpochMs = new.lastSyncedEpochMs) != new
+            }.map { it.id }.toSet()
+            if (changedIds.isNotEmpty()) {
+                dao.upsertAll(questionEntities.filter { it.id in changedIds })
+            }
             if (prune) {
                 dao.deleteByIdsNotIn(keepIds)
             }
             for (dto in dtos) {
-                forecastDao.deleteByQuestionId(dto.id)
-                commentDao.deleteByQuestionId(dto.id)
-                optionDao.deleteByQuestionId(dto.id)
+                val children = childrenById.getValue(dto.id)
+                // REPLACE on the parent cascade-deletes its children, so a
+                // rewritten parent always needs them re-inserted; otherwise
+                // rewrite only when the fetched children differ from the cache.
+                val parentReplaced = dto.id in changedIds
+                if (parentReplaced ||
+                    forecastDao.getByQuestionId(dto.id).normalized() != children.forecasts.normalized()
+                ) {
+                    forecastDao.deleteByQuestionId(dto.id)
+                    forecastDao.upsertAll(children.forecasts)
+                }
+                if (parentReplaced ||
+                    commentDao.getByQuestionId(dto.id).sortedBy { it.id } != children.comments.sortedBy { it.id }
+                ) {
+                    commentDao.deleteByQuestionId(dto.id)
+                    commentDao.upsertAll(children.comments)
+                }
+                if (parentReplaced ||
+                    optionDao.getByQuestionId(dto.id).sortedBy { it.id } != children.options.sortedBy { it.id }
+                ) {
+                    optionDao.deleteByQuestionId(dto.id)
+                    optionDao.upsertAll(children.options)
+                }
             }
-            forecastDao.upsertAll(dtos.flatMap { it.toForecastEntities() })
-            commentDao.upsertAll(dtos.flatMap { it.toCommentEntities() })
-            optionDao.upsertAll(dtos.flatMap { it.toOptionEntities() })
         }
     }
+
+    /** Comparable shape for forecast diffing: the autogenerated PK never matches. */
+    private fun List<ForecastEntity>.normalized(): List<ForecastEntity> =
+        map { it.copy(id = 0) }
+            .sortedWith(
+                compareBy({ it.createdAtEpochMs }, { it.optionId ?: "" }, { it.forecast }),
+            )
 
     private fun captureDisplayName(dtos: List<QuestionDto>) {
         if (prefs.displayName != null) return
@@ -299,9 +364,9 @@ class QuestionRepository @Inject constructor(
         val nowMs = System.currentTimeMillis()
         val options = optionDao.getByQuestionId(questionId)
         val winner = options.firstOrNull { it.text == resolution }
-        val parentResolution = when {
-            resolution == MC_RESOLUTION_AMBIGUOUS -> Resolution.AMBIGUOUS
-            resolution == MC_RESOLUTION_OTHER -> Resolution.NO
+        val parentResolution = when (resolution) {
+            McResolution.AMBIGUOUS -> Resolution.AMBIGUOUS
+            McResolution.OTHER -> Resolution.NO
             else -> Resolution.YES
         }
         transactor.transact {
@@ -503,12 +568,17 @@ class QuestionRepository @Inject constructor(
 
     // --- Mappers ---
 
-    private fun QuestionDto.toEntity(): QuestionEntity {
-        // Option-level forecasts (optionId != null) belong to their option, not
-        // the question-level latest forecast.
-        val latest = forecasts
-            ?.filter { it.forecast != null && it.optionId == null }
+    /**
+     * Latest forecast at the question level (null [optionId]) or on one option.
+     * Option-level forecasts live in the question's forecasts array keyed by
+     * optionId — options[].forecasts is a duplicate view and is never read.
+     */
+    private fun List<ForecastDto>?.latestFor(optionId: String?): ForecastDto? =
+        this?.filter { it.forecast != null && it.optionId == optionId }
             ?.maxByOrNull { it.createdAt ?: "" }
+
+    private fun QuestionDto.toEntity(): QuestionEntity {
+        val latest = forecasts.latestFor(optionId = null)
 
         return QuestionEntity(
             id = id,
@@ -549,11 +619,7 @@ class QuestionRepository @Inject constructor(
 
     private fun QuestionDto.toOptionEntities(): List<OptionEntity> =
         options?.map { option ->
-            // An option's latest forecast comes from the question-level forecasts
-            // array filtered by optionId (options[].forecasts is a duplicate view).
-            val latest = forecasts
-                ?.filter { it.optionId == option.id && it.forecast != null }
-                ?.maxByOrNull { it.createdAt ?: "" }
+            val latest = forecasts.latestFor(option.id)
             OptionEntity(
                 id = option.id,
                 questionId = id,
@@ -600,61 +666,6 @@ class QuestionRepository @Inject constructor(
         createdAt = Instant.ofEpochMilli(createdAtEpochMs),
     )
 
-    private fun QuestionDto.toDomain(): Question {
-        val latest = forecasts
-            ?.filter { it.forecast != null && it.optionId == null }
-            ?.maxByOrNull { it.createdAt ?: "" }
-
-        return Question(
-            id = id,
-            title = title,
-            resolveBy = parseInstant(resolveBy),
-            createdAt = parseInstant(createdAt),
-            resolution = resolution?.let { Resolution.fromApi(it) },
-            resolved = resolved,
-            resolvedAt = resolvedAt?.let { parseInstant(it) },
-            yourLatestForecast = latest?.forecast,
-            latestForecastAt = latest?.createdAt?.let { parseInstant(it) },
-            forecasts = forecasts?.map { dto ->
-                Forecast(
-                    userId = dto.userId ?: "",
-                    forecast = dto.forecast,
-                    createdAt = dto.createdAt?.let { parseInstant(it) } ?: Instant.EPOCH,
-                    userName = dto.user?.name,
-                    optionId = dto.optionId,
-                )
-            } ?: emptyList(),
-            url = url ?: "https://fatebook.io/q/$id",
-            forecastHiddenUntil = latest?.hideForecastsUntil?.let {
-                try { parseInstant(it) } catch (_: Exception) { null }
-            },
-            notes = notes,
-            sharedPublicly = sharedPublicly ?: false,
-            unlisted = unlisted ?: false,
-            comments = comments?.mapNotNull { it.toDomain() } ?: emptyList(),
-            type = QuestionType.fromApi(questionType),
-            exclusiveAnswers = exclusiveAnswers != false,
-            options = options?.map { it.toDomainOption(forecasts) } ?: emptyList(),
-            tags = tags?.mapNotNull { it.name } ?: emptyList(),
-        )
-    }
-
-    private fun OptionDto.toDomainOption(
-        questionForecasts: List<ForecastDto>?,
-    ): QuestionOption {
-        val latest = questionForecasts
-            ?.filter { it.optionId == id && it.forecast != null }
-            ?.maxByOrNull { it.createdAt ?: "" }
-        return QuestionOption(
-            id = id,
-            text = text,
-            latestForecast = latest?.forecast,
-            latestForecastAt = latest?.createdAt?.let { parseInstant(it) },
-            resolution = resolution?.let { Resolution.fromApi(it) },
-            resolvedAt = resolvedAt?.let { parseInstant(it) },
-        )
-    }
-
     private fun OptionEntity.toDomain(): QuestionOption = QuestionOption(
         id = id,
         text = text,
@@ -688,18 +699,19 @@ class QuestionRepository @Inject constructor(
         )
     }
 
-    private fun parseTags(json: String): List<String> =
-        try {
-            tagsAdapter.fromJson(json) ?: emptyList()
-        } catch (_: Exception) {
-            emptyList()
-        }
+    // Tags are immutable after creation, so a parsed tagsJson stays valid for
+    // the row's lifetime — memoizing skips a Moshi parse per question on every
+    // cache emission. Bounded by the number of distinct tag sets in the cache.
+    private val tagsCache = ConcurrentHashMap<String, List<String>>()
 
-    companion object {
-        /** Special MC resolutions understood by the server besides an option's text. */
-        const val MC_RESOLUTION_OTHER = "OTHER"
-        const val MC_RESOLUTION_AMBIGUOUS = "AMBIGUOUS"
-    }
+    private fun parseTags(json: String): List<String> =
+        tagsCache.getOrPut(json) {
+            try {
+                tagsAdapter.fromJson(json) ?: emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
 
     private fun parseInstant(dateStr: String): Instant {
         return try {

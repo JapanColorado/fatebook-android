@@ -259,6 +259,8 @@ private fun relativeDate(date: LocalDate): String {
         daysDiff == 1L -> "tomorrow"
         daysDiff < 7 -> "in ${daysDiff}d"
         daysDiff < 30 -> "in ${daysDiff / 7}w"
+        // Beyond a year out, "Jun 1" alone is ambiguous — say which year.
+        date.isAfter(today.plusYears(1)) -> date.format(MONTH_DAY_YEAR)
         else -> date.format(MONTH_DAY)
     }
 }

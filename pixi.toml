@@ -10,14 +10,17 @@ gradle = ">=9.3"
 openjdk = ">=21,<22"
 
 [tasks]
-build = { cmd = "./gradlew assembleDebug", env = { ANDROID_HOME = "/usr/lib/android-sdk" } }
-install = "adb install -r app/build/outputs/apk/debug/app-debug.apk"
+build = { cmd = "./gradlew assembleRelease", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+build-debug = { cmd = "./gradlew assembleDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+install = "adb install -r app/build/outputs/apk/release/app-release.apk"
+install-debug = "adb install -r app/build/outputs/apk/debug/app-debug.apk"
 deploy = { depends-on = ["build", "install"] }
+deploy-debug = { depends-on = ["build-debug", "install-debug"] }
 run = "adb shell am start -n dev.russell.fatebook/.MainActivity"
-clean = { cmd = "./gradlew clean", env = { ANDROID_HOME = "/usr/lib/android-sdk" } }
-test = { cmd = "./gradlew test", env = { ANDROID_HOME = "/usr/lib/android-sdk" } }
-test-unit = { cmd = "./gradlew testDebugUnitTest", env = { ANDROID_HOME = "/usr/lib/android-sdk" } }
-test-screenshot-record = { cmd = "./gradlew recordPaparazziDebug", env = { ANDROID_HOME = "/usr/lib/android-sdk" } }
-test-screenshot-verify = { cmd = "./gradlew verifyPaparazziDebug", env = { ANDROID_HOME = "/usr/lib/android-sdk" } }
-test-all = { cmd = "./gradlew testDebugUnitTest verifyPaparazziDebug", env = { ANDROID_HOME = "/usr/lib/android-sdk" } }
-lint = { cmd = "./gradlew lintDebug", env = { ANDROID_HOME = "/usr/lib/android-sdk" } }
+clean = { cmd = "./gradlew clean", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+test = { cmd = "./gradlew test", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+test-unit = { cmd = "./gradlew testDebugUnitTest", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+test-screenshot-record = { cmd = "./gradlew recordPaparazziDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+test-screenshot-verify = { cmd = "./gradlew verifyPaparazziDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+test-all = { cmd = "./gradlew testDebugUnitTest verifyPaparazziDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }
+lint = { cmd = "./gradlew lintDebug", env = { ANDROID_HOME = "/home/russell/Android/Sdk" } }

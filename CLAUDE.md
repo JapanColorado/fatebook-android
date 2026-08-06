@@ -8,8 +8,10 @@ Package: `dev.russell.fatebook`
 All commands go through pixi (which provides the JDK — the system only has a JRE):
 
 ```bash
-pixi run build                  # ./gradlew assembleDebug
-pixi run deploy                 # build + adb install
+pixi run build                  # ./gradlew assembleRelease (day-to-day build)
+pixi run deploy                 # release build + adb install (the default install)
+pixi run build-debug            # ./gradlew assembleDebug
+pixi run deploy-debug           # debug build + adb install (debugger/layout-inspector sessions)
 pixi run clean                  # ./gradlew clean
 pixi run test                   # ./gradlew test (all JVM tests)
 pixi run test-unit              # ./gradlew testDebugUnitTest
@@ -21,7 +23,7 @@ pixi run lint                   # ./gradlew lintDebug
 
 Do NOT run `./gradlew` directly — it will fail because the system JDK is incomplete. Always use `pixi run`.
 
-Android SDK location: `/usr/lib/android-sdk`
+Android SDK location: `~/Android/Sdk` (user-writable; Gradle auto-downloads missing packages — the Debian SDK at `/usr/lib/android-sdk` lacks platforms and is not used)
 
 ## Architecture
 

@@ -94,6 +94,46 @@ class NotificationHelper @Inject constructor() {
         manager.notify(RESOLVE_NOTIFICATION_ID, summary)
     }
 
+    /**
+     * One digest listing questions due in the next few days. There's nothing
+     * to act on before the deadline, so no per-question fan-out; tapping opens
+     * the feed on the Resolving soon filter.
+     */
+    fun showResolvingSoonNotification(context: Context, questions: List<Question>) {
+        if (ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        if (questions.isEmpty()) return
+
+        val pendingIntent = PendingIntent.getActivity(
+            context, 2, openSoonFilterIntent(context),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val count = questions.size
+        val title = if (count == 1) "1 question resolving soon" else "$count questions resolving soon"
+        val style = NotificationCompat.InboxStyle()
+        selectForNotifications(questions).forEach { style.addLine(it.title) }
+        if (count > MAX_QUESTION_NOTIFICATIONS) {
+            style.setSummaryText("+${count - MAX_QUESTION_NOTIFICATIONS} more")
+        }
+
+        val notification = NotificationCompat.Builder(context, FatebookApplication.SOON_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(questions.first().title)
+            .setStyle(style)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(SOON_NOTIFICATION_ID, notification)
+    }
+
     private fun buildQuestionNotification(
         context: Context,
         question: Question,
@@ -102,7 +142,7 @@ class NotificationHelper @Inject constructor() {
 
         val contentPending = PendingIntent.getActivity(
             context,
-            requestCodeFor(question.id, action = 0),
+            requestCodeFor(question.id, action = ACTION_OPEN),
             openQuestionIntent(context, question.id),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -122,7 +162,28 @@ class NotificationHelper @Inject constructor() {
                 .addAction(0, "YES", resolveActionIntent(context, question.id, "YES", notificationId))
                 .addAction(0, "NO", resolveActionIntent(context, question.id, "NO", notificationId))
         }
+        if (hasSnoozeAction(question)) {
+            builder.addAction(0, "+1 week", snoozeActionIntent(context, question.id, notificationId))
+        }
         return builder.build()
+    }
+
+    private fun snoozeActionIntent(
+        context: Context,
+        questionId: String,
+        notificationId: Int,
+    ): PendingIntent {
+        val intent = Intent(context, ResolveActionReceiver::class.java).apply {
+            action = ResolveActionReceiver.ACTION_SNOOZE
+            putExtra(ResolveActionReceiver.EXTRA_QUESTION_ID, questionId)
+            putExtra(ResolveActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            requestCodeFor(questionId, action = ACTION_SNOOZE),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     private fun resolveActionIntent(
@@ -138,7 +199,7 @@ class NotificationHelper @Inject constructor() {
         }
         return PendingIntent.getBroadcast(
             context,
-            requestCodeFor(questionId, action = if (resolution == "YES") 1 else 2),
+            requestCodeFor(questionId, action = if (resolution == "YES") ACTION_YES else ACTION_NO),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -147,8 +208,10 @@ class NotificationHelper @Inject constructor() {
     companion object {
         const val NOTIFICATION_ID = 1
         const val RESOLVE_NOTIFICATION_ID = 2
+        const val SOON_NOTIFICATION_ID = 3
         const val EXTRA_OPEN_CREATE = "open_create"
         const val EXTRA_OPEN_RESOLVE_FILTER = "open_resolve_filter"
+        const val EXTRA_OPEN_SOON_FILTER = "open_soon_filter"
         const val EXTRA_QUESTION_ID = "open_question_id"
         const val GROUP_READY_TO_RESOLVE = "ready_to_resolve_group"
 
@@ -167,6 +230,10 @@ class NotificationHelper @Inject constructor() {
         /** Launch the app on the feed with the Ready to Resolve filter. */
         fun openResolveFilterIntent(context: Context): Intent =
             launchIntent(context).putExtra(EXTRA_OPEN_RESOLVE_FILTER, true)
+
+        /** Launch the app on the feed with the Resolving soon filter. */
+        fun openSoonFilterIntent(context: Context): Intent =
+            launchIntent(context).putExtra(EXTRA_OPEN_SOON_FILTER, true)
 
         /** Launch the app with one question's detail sheet open. */
         fun openQuestionIntent(context: Context, questionId: String): Intent =
@@ -188,15 +255,26 @@ class NotificationHelper @Inject constructor() {
         fun hasResolveActions(question: Question): Boolean =
             question.type == QuestionType.BINARY
 
+        /** Pushing the date works for anything the public API can edit (not QUANTITY). */
+        fun hasSnoozeAction(question: Question): Boolean =
+            question.type != QuestionType.QUANTITY
+
         /** Stable per-question notification id, clear of the fixed ids 1 and 2. */
         fun notificationIdFor(questionId: String): Int =
             RESOLVE_ID_BASE + (questionId.hashCode() and 0x7FFFFFFF) % 100_000
 
+        internal const val ACTION_OPEN = 0
+        internal const val ACTION_YES = 1
+        internal const val ACTION_NO = 2
+        internal const val ACTION_SNOOZE = 3
+        private const val ACTIONS_PER_QUESTION = 4
+
         /**
          * PendingIntent request codes must not collide across questions or with
-         * the daily-reminder codes 0/1; action ∈ {0 content, 1 yes, 2 no}.
+         * the fixed codes 0/1/2 used by the reminder, summary and digest taps;
+         * action ∈ {open, yes, no, snooze}.
          */
-        private fun requestCodeFor(questionId: String, action: Int): Int =
-            1000 + ((questionId.hashCode() and 0x7FFFFFFF) % 100_000) * 3 + action
+        internal fun requestCodeFor(questionId: String, action: Int): Int =
+            1000 + ((questionId.hashCode() and 0x7FFFFFFF) % 100_000) * ACTIONS_PER_QUESTION + action
     }
 }

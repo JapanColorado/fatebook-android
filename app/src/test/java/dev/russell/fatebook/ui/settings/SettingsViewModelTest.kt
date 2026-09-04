@@ -1,6 +1,7 @@
 package dev.russell.fatebook.ui.settings
 
 import com.google.common.truth.Truth.assertThat
+import dev.russell.fatebook.data.preferences.NotificationToggles
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.ApiKeyConnector
 import dev.russell.fatebook.data.repository.ConnectResult
@@ -40,6 +41,7 @@ class SettingsViewModelTest {
         every { prefs.reminderHour } returns flowOf(9)
         every { prefs.reminderMinute } returns flowOf(0)
         every { prefs.lastPredictionDateEpochMs } returns flowOf(0L)
+        every { prefs.notificationToggles } returns flowOf(NotificationToggles())
     }
 
     @After
@@ -198,5 +200,20 @@ class SettingsViewModelTest {
 
         coVerify { prefs.setReminderTime(14, 30) }
         verify(exactly = 0) { reminderScheduler.schedule(any(), any()) }
+    }
+
+    @Test
+    fun `per-kind toggles write through to prefs`() = runTest {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.setDailyReminderEnabled(false)
+        vm.setReadyToResolveEnabled(false)
+        vm.setResolvingSoonEnabled(true)
+        advanceUntilIdle()
+
+        coVerify { prefs.setDailyReminderEnabled(false) }
+        coVerify { prefs.setReadyToResolveEnabled(false) }
+        coVerify { prefs.setResolvingSoonEnabled(true) }
     }
 }

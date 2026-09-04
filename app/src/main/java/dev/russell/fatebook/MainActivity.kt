@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
         val openResolveFilter = intent.getBooleanExtra(
             NotificationHelper.EXTRA_OPEN_RESOLVE_FILTER, false,
         )
+        val openSoonFilter = intent.getBooleanExtra(NotificationHelper.EXTRA_OPEN_SOON_FILTER, false)
         val openQuestionId = intent.getStringExtra(NotificationHelper.EXTRA_QUESTION_ID)
         val sharedText = extractSharedText(intent)
         setContent {
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
                     userPreferences = userPreferences,
                     openCreate = openCreate,
                     openResolveFilter = openResolveFilter,
+                    openSoonFilter = openSoonFilter,
                     openQuestionId = openQuestionId,
                     sharedText = sharedText,
                 )

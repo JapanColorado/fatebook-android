@@ -99,6 +99,9 @@ fun SettingsScreen(
         onValidateAndSave = viewModel::validateAndSave,
         onNotificationsEnabledChanged = viewModel::setNotificationsEnabled,
         onReminderTimeChanged = viewModel::setReminderTime,
+        onDailyReminderEnabledChanged = viewModel::setDailyReminderEnabled,
+        onReadyToResolveEnabledChanged = viewModel::setReadyToResolveEnabled,
+        onResolvingSoonEnabledChanged = viewModel::setResolvingSoonEnabled,
         onGetApiKeyClick = {
             context.startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse("https://fatebook.io/api-setup"))
@@ -121,6 +124,9 @@ fun SettingsScreenContent(
     onValidateAndSave: () -> Unit = {},
     onNotificationsEnabledChanged: (Boolean) -> Unit = {},
     onReminderTimeChanged: (Int, Int) -> Unit = { _, _ -> },
+    onDailyReminderEnabledChanged: (Boolean) -> Unit = {},
+    onReadyToResolveEnabledChanged: (Boolean) -> Unit = {},
+    onResolvingSoonEnabledChanged: (Boolean) -> Unit = {},
     onGetApiKeyClick: () -> Unit = {},
     onPrivacyPolicyClick: () -> Unit = {},
 ) {
@@ -193,26 +199,39 @@ fun SettingsScreenContent(
             // --- Notifications ---
             Text("Notifications", style = MaterialTheme.typography.titleMedium)
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Daily reminder")
-                Switch(
-                    checked = state.notificationsEnabled,
-                    onCheckedChange = onNotificationsEnabledChanged,
-                )
-            }
+            SwitchRow(
+                label = "Enable notifications",
+                checked = state.notificationsEnabled,
+                onCheckedChange = onNotificationsEnabledChanged,
+            )
 
             if (state.notificationsEnabled) {
                 var showTimePicker by remember { mutableStateOf(false) }
 
                 TextButton(onClick = { showTimePicker = true }) {
                     Text(
-                        "Reminder time: %02d:%02d".format(state.reminderHour, state.reminderMinute)
+                        "Notification time: %02d:%02d".format(state.reminderHour, state.reminderMinute)
                     )
                 }
+
+                SwitchRow(
+                    label = "Daily reminder to predict",
+                    description = "Skipped on days you've already predicted",
+                    checked = state.dailyReminderEnabled,
+                    onCheckedChange = onDailyReminderEnabledChanged,
+                )
+                SwitchRow(
+                    label = "Ready to resolve",
+                    description = "One per overdue question, with YES / NO / +1 week",
+                    checked = state.readyToResolveEnabled,
+                    onCheckedChange = onReadyToResolveEnabledChanged,
+                )
+                SwitchRow(
+                    label = "Resolving soon",
+                    description = "A digest of questions due in the next 3 days",
+                    checked = state.resolvingSoonEnabled,
+                    onCheckedChange = onResolvingSoonEnabledChanged,
+                )
 
                 if (showTimePicker) {
                     val timePickerState = rememberTimePickerState(
@@ -262,5 +281,31 @@ fun SettingsScreenContent(
                 Text("Privacy Policy")
             }
         }
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    description: String? = null,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label)
+            if (description != null) {
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

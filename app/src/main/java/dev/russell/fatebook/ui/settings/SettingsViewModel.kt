@@ -3,6 +3,7 @@ package dev.russell.fatebook.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.russell.fatebook.data.preferences.NotificationToggles
 import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.ApiKeyConnector
 import dev.russell.fatebook.data.repository.ConnectResult
@@ -24,6 +25,9 @@ data class SettingsUiState(
     val reminderHour: Int = 9,
     val reminderMinute: Int = 0,
     val shouldRequestNotificationPermission: Boolean = false,
+    val dailyReminderEnabled: Boolean = true,
+    val readyToResolveEnabled: Boolean = true,
+    val resolvingSoonEnabled: Boolean = true,
 )
 
 @HiltViewModel
@@ -49,7 +53,9 @@ class SettingsViewModel @Inject constructor(
         prefs.reminderHour,
         prefs.reminderMinute,
         _shouldRequestPermission,
+        prefs.notificationToggles,
     ) { values ->
+        val toggles = values[8] as NotificationToggles
         SettingsUiState(
             apiKey = values[0] as String,
             isValidating = values[1] as Boolean,
@@ -59,6 +65,9 @@ class SettingsViewModel @Inject constructor(
             reminderHour = values[5] as Int,
             reminderMinute = values[6] as Int,
             shouldRequestNotificationPermission = values[7] as Boolean,
+            dailyReminderEnabled = toggles.dailyReminder,
+            readyToResolveEnabled = toggles.readyToResolve,
+            resolvingSoonEnabled = toggles.resolvingSoon,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -104,6 +113,18 @@ class SettingsViewModel @Inject constructor(
             }
         }
         _pendingNotificationEnable.value = false
+    }
+
+    fun setDailyReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setDailyReminderEnabled(enabled) }
+    }
+
+    fun setReadyToResolveEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setReadyToResolveEnabled(enabled) }
+    }
+
+    fun setResolvingSoonEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setResolvingSoonEnabled(enabled) }
     }
 
     fun setReminderTime(hour: Int, minute: Int) {

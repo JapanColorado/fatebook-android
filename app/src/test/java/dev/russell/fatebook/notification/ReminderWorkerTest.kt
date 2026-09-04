@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import com.google.common.truth.Truth.assertThat
+import dev.russell.fatebook.data.preferences.NotificationToggles
+import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.testutil.TestData
@@ -11,6 +13,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
@@ -23,21 +26,73 @@ class ReminderWorkerTest {
     }
     private val repository = mockk<QuestionRepository>(relaxed = true)
     private val notificationHelper = mockk<NotificationHelper>(relaxed = true)
+    private val prefs = mockk<UserPreferences>(relaxed = true)
 
     private lateinit var worker: ReminderWorker
 
     @Before
     fun setup() {
         coEvery { repository.getReadyToResolve() } returns emptyList()
-        worker = ReminderWorker(context, params, repository, notificationHelper) { /* no-op widget */ }
+        coEvery { repository.getResolvingSoon(any()) } returns emptyList()
+        every { prefs.notificationToggles } returns flowOf(NotificationToggles())
+        every { prefs.lastPredictionDateEpochMs } returns flowOf(0L)
+        worker = ReminderWorker(context, params, repository, notificationHelper, prefs) { /* no-op widget */ }
     }
 
     @Test
-    fun `doWork always shows daily reminder notification`() = runTest {
+    fun `doWork shows daily reminder when nothing predicted today`() = runTest {
         val result = worker.doWork()
 
         assertThat(result).isEqualTo(ListenableWorker.Result.success())
         coVerify { notificationHelper.showReminderNotification(any()) }
+    }
+
+    @Test
+    fun `doWork skips daily reminder when already predicted today`() = runTest {
+        every { prefs.lastPredictionDateEpochMs } returns flowOf(System.currentTimeMillis())
+
+        worker.doWork()
+
+        coVerify(exactly = 0) { notificationHelper.showReminderNotification(any()) }
+    }
+
+    @Test
+    fun `daily reminder toggle off suppresses the reminder`() = runTest {
+        every { prefs.notificationToggles } returns flowOf(NotificationToggles(dailyReminder = false))
+
+        worker.doWork()
+
+        coVerify(exactly = 0) { notificationHelper.showReminderNotification(any()) }
+    }
+
+    @Test
+    fun `ready-to-resolve toggle off suppresses those notifications`() = runTest {
+        every { prefs.notificationToggles } returns flowOf(NotificationToggles(readyToResolve = false))
+        coEvery { repository.getReadyToResolve() } returns listOf(TestData.question(id = "q1"))
+
+        worker.doWork()
+
+        coVerify(exactly = 0) { notificationHelper.showReadyToResolveNotifications(any(), any()) }
+    }
+
+    @Test
+    fun `doWork shows resolving-soon digest when questions are due soon`() = runTest {
+        val soon = listOf(TestData.question(id = "s1"))
+        coEvery { repository.getResolvingSoon(ReminderPolicy.RESOLVING_SOON_DAYS) } returns soon
+
+        worker.doWork()
+
+        coVerify { notificationHelper.showResolvingSoonNotification(any(), soon) }
+    }
+
+    @Test
+    fun `resolving-soon toggle off suppresses the digest`() = runTest {
+        every { prefs.notificationToggles } returns flowOf(NotificationToggles(resolvingSoon = false))
+        coEvery { repository.getResolvingSoon(any()) } returns listOf(TestData.question(id = "s1"))
+
+        worker.doWork()
+
+        coVerify(exactly = 0) { notificationHelper.showResolvingSoonNotification(any(), any()) }
     }
 
     @Test
@@ -95,6 +150,33 @@ class ReminderWorkerTest {
                 TestData.question(id = "qt", type = QuestionType.QUANTITY),
             ),
         ).isFalse()
+    }
+
+    @Test
+    fun `snooze is offered for everything but QUANTITY`() {
+        assertThat(NotificationHelper.hasSnoozeAction(TestData.question(id = "b"))).isTrue()
+        assertThat(
+            NotificationHelper.hasSnoozeAction(TestData.question(id = "mc", type = QuestionType.MULTIPLE_CHOICE)),
+        ).isTrue()
+        assertThat(
+            NotificationHelper.hasSnoozeAction(TestData.question(id = "qt", type = QuestionType.QUANTITY)),
+        ).isFalse()
+    }
+
+    @Test
+    fun `request codes are unique across actions and questions and clear of the fixed codes`() {
+        val actions = listOf(
+            NotificationHelper.ACTION_OPEN,
+            NotificationHelper.ACTION_YES,
+            NotificationHelper.ACTION_NO,
+            NotificationHelper.ACTION_SNOOZE,
+        )
+        val codes = listOf("question-a", "question-b").flatMap { q ->
+            actions.map { NotificationHelper.requestCodeFor(q, it) }
+        }
+
+        assertThat(codes).containsNoDuplicates()
+        assertThat(codes.min()).isGreaterThan(2)
     }
 
     @Test

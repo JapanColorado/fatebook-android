@@ -19,6 +19,7 @@ fun FatebookNavGraph(
     userPreferences: UserPreferences,
     openCreate: Boolean = false,
     openResolveFilter: Boolean = false,
+    openSoonFilter: Boolean = false,
     openQuestionId: String? = null,
     sharedText: String? = null,
 ) {
@@ -37,7 +38,11 @@ fun FatebookNavGraph(
                 onCreateClick = { navController.navigate(Routes.create()) },
                 onSettingsClick = { navController.navigate(Routes.SETTINGS) },
                 onAnalyticsClick = { navController.navigate(Routes.ANALYTICS) },
-                initialFilter = if (openResolveFilter) FeedFilter.READY_TO_RESOLVE else null,
+                initialFilter = when {
+                    openResolveFilter -> FeedFilter.READY_TO_RESOLVE
+                    openSoonFilter -> FeedFilter.RESOLVING_SOON
+                    else -> null
+                },
                 initialQuestionId = openQuestionId,
             )
         }

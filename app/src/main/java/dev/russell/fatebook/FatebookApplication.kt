@@ -43,12 +43,20 @@ class FatebookApplication : Application(), Configuration.Provider {
         ).apply {
             description = getString(R.string.resolve_channel_description)
         }
+        val soonChannel = NotificationChannel(
+            SOON_CHANNEL_ID,
+            getString(R.string.soon_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = getString(R.string.soon_channel_description)
+        }
         getSystemService(NotificationManager::class.java)
-            .createNotificationChannels(listOf(reminderChannel, resolveChannel))
+            .createNotificationChannels(listOf(reminderChannel, resolveChannel, soonChannel))
     }
 
     companion object {
         const val CHANNEL_ID = "daily_reminder"
         const val RESOLVE_CHANNEL_ID = "ready_to_resolve"
+        const val SOON_CHANNEL_ID = "resolving_soon"
     }
 }

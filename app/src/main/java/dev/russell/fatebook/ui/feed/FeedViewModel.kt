@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -161,7 +162,7 @@ class FeedViewModel @Inject constructor(
         .distinctUntilChanged()
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val questionsFlow: Flow<List<Question>> = _filter
+    private val questionsByFilter: Flow<List<Question>> = _filter
         .flatMapLatest { filter ->
             when (filter) {
                 FeedFilter.ACTIVE -> repository.observeActive()
@@ -171,9 +172,25 @@ class FeedViewModel @Inject constructor(
                 FeedFilter.RESOLVED -> repository.observeResolved()
             }
         }
-        .combine(debouncedQuery) { questions, query ->
-            if (query.isBlank()) questions
-            else questions.filter { it.title.contains(query, ignoreCase = true) }
+
+    // Comments aren't on feed Question objects, so search reads a separate
+    // questionId → text index. Only observed while a query is active.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val commentIndex: Flow<Map<String, String>> = debouncedQuery
+        .map { it.isBlank() }
+        .distinctUntilChanged()
+        .flatMapLatest { blank ->
+            if (blank) flowOf(emptyMap()) else repository.observeCommentSearchIndex()
+        }
+
+    private val questionsFlow: Flow<List<Question>> =
+        combine(questionsByFilter, debouncedQuery, commentIndex) { questions, query, comments ->
+            if (query.isBlank()) {
+                questions
+            } else {
+                val q = query.trim().lowercase()
+                questions.filter { QuestionSearch.matches(it, comments[it.id], q) }
+            }
         }
         .combine(_selectedTag) { questions, tag ->
             if (tag == null) questions

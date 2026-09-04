@@ -49,6 +49,21 @@ data class Question(
     val options: List<QuestionOption> = emptyList(),
     val tags: List<String> = emptyList(),
 ) {
+    /**
+     * Lower-cased haystack for feed search: title, notes, tags and option
+     * texts. Comments are not on feed questions (see QuestionRepository's
+     * comment search index). A body property, so it stays out of equals/hashCode
+     * and is computed once per instance.
+     */
+    val searchText: String by lazy {
+        buildString {
+            appendLine(title)
+            notes?.let { appendLine(it) }
+            tags.forEach { appendLine(it) }
+            options.forEach { appendLine(it.text) }
+        }.lowercase()
+    }
+
     /** The resolve-by date (extracted from the UTC-midnight Instant the API stores). */
     val resolveByDate: LocalDate
         get() = resolveBy.atZone(ZoneOffset.UTC).toLocalDate()

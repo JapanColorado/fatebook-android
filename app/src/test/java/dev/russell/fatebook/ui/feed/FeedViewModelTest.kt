@@ -48,6 +48,7 @@ class FeedViewModelTest {
         coEvery { repository.observeReadyToResolve() } returns flowOf(emptyList())
         coEvery { repository.observeResolvingSoon(any()) } returns flowOf(emptyList())
         coEvery { repository.observeAllTags() } returns flowOf(emptyList())
+        coEvery { repository.observeCommentSearchIndex() } returns flowOf(emptyMap())
         coEvery { repository.observeErroredMutations() } returns flowOf(emptyList())
         coEvery { repository.refresh() } just Runs
         every { repository.hasMore() } returns false
@@ -101,6 +102,27 @@ class FeedViewModelTest {
         assertThat(vm.uiState.value.filter).isEqualTo(FeedFilter.RESOLVED)
         assertThat(vm.uiState.value.questions).hasSize(1)
         assertThat(vm.uiState.value.questions[0].id).isEqualTo("r1")
+    }
+
+    @Test
+    fun `setSearchQuery matches notes and comments too`() = runTest {
+        val byNotes = TestData.question(id = "notes", title = "Alpha").copy(notes = "remember the umbrella")
+        val byComment = TestData.question(id = "comment", title = "Beta")
+        val neither = TestData.question(id = "none", title = "Gamma")
+        coEvery { repository.observeActive() } returns flowOf(listOf(byNotes, byComment, neither))
+        coEvery { repository.observeCommentSearchIndex() } returns
+            flowOf(mapOf("comment" to "bring an umbrella just in case"))
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.setSearchQuery("Umbrella")
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.questions.map { it.id }).containsExactly("notes", "comment")
     }
 
     @Test

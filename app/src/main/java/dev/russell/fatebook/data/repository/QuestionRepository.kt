@@ -147,6 +147,19 @@ class QuestionRepository @Inject constructor(
     fun observeAllForecasts(): Flow<List<ForecastEntity>> =
         forecastDao.observeAll()
 
+    /**
+     * questionId → lower-cased concatenation of that question's comments, for
+     * feed search. Only collected while a query is active.
+     */
+    fun observeCommentSearchIndex(): Flow<Map<String, String>> =
+        commentDao.observeSearchIndex()
+            .map { rows ->
+                rows.groupBy({ it.questionId }, { it.comment })
+                    .mapValues { (_, comments) -> comments.joinToString("\n").lowercase() }
+            }
+            .distinctUntilChanged()
+            .flowOn(defaultDispatcher)
+
     /** All tag names across the cache — a lightweight projection, no domain mapping. */
     fun observeAllTags(): Flow<List<String>> =
         dao.observeAllTagsJson()

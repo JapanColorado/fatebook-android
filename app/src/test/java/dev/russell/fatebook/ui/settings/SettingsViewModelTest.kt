@@ -2,7 +2,8 @@ package dev.russell.fatebook.ui.settings
 
 import com.google.common.truth.Truth.assertThat
 import dev.russell.fatebook.data.preferences.UserPreferences
-import dev.russell.fatebook.data.repository.QuestionRepository
+import dev.russell.fatebook.data.repository.ApiKeyConnector
+import dev.russell.fatebook.data.repository.ConnectResult
 import dev.russell.fatebook.notification.ReminderScheduler
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -28,7 +29,7 @@ class SettingsViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private val prefs = mockk<UserPreferences>(relaxed = true)
-    private val repository = mockk<QuestionRepository>(relaxed = true)
+    private val connector = mockk<ApiKeyConnector>()
     private val reminderScheduler = mockk<ReminderScheduler>(relaxed = true)
 
     @Before
@@ -46,7 +47,7 @@ class SettingsViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun createViewModel() = SettingsViewModel(prefs, repository, reminderScheduler)
+    private fun createViewModel() = SettingsViewModel(prefs, connector, reminderScheduler)
 
     @Test
     fun `initial state loads existing API key`() = runTest {
@@ -75,7 +76,7 @@ class SettingsViewModelTest {
 
     @Test
     fun `validateAndSave sets validationResult true on success`() = runTest {
-        coEvery { repository.validateApiKey() } returns true
+        coEvery { connector.connect("existing-key") } returns ConnectResult.Success
 
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -91,8 +92,8 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `validateAndSave clears API key and sets error on failure`() = runTest {
-        coEvery { repository.validateApiKey() } returns false
+    fun `validateAndSave sets error on failure`() = runTest {
+        coEvery { connector.connect(any()) } returns ConnectResult.Invalid
 
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -103,7 +104,6 @@ class SettingsViewModelTest {
         vm.validateAndSave()
         advanceUntilIdle()
 
-        verify { prefs.apiKey = null }
         assertThat(vm.state.value.validationResult).isFalse()
         assertThat(vm.state.value.validationError).isNotNull()
     }

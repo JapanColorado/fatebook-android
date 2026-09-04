@@ -77,6 +77,33 @@ class QuestionRepositoryTest {
         )
     }
 
+    // --- resolving soon ---
+
+    private fun utcMidnight(date: LocalDate): Long =
+        date.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+
+    @Test
+    fun `observeResolvingSoon covers tomorrow through today plus N, excluding today and beyond`() = runTest {
+        val today = LocalDate.now()
+        dao.upsertAll(
+            listOf(
+                TestData.questionEntity(id = "today", resolveByEpochMs = utcMidnight(today)),
+                TestData.questionEntity(id = "tomorrow", resolveByEpochMs = utcMidnight(today.plusDays(1))),
+                TestData.questionEntity(id = "edge", resolveByEpochMs = utcMidnight(today.plusDays(3))),
+                TestData.questionEntity(id = "beyond", resolveByEpochMs = utcMidnight(today.plusDays(4))),
+                TestData.questionEntity(
+                    id = "resolvedSoon",
+                    resolveByEpochMs = utcMidnight(today.plusDays(2)),
+                    resolved = true,
+                ),
+            ),
+        )
+
+        val soon = repository.observeResolvingSoon(withinDays = 3).first()
+
+        assertThat(soon.map { it.id }).containsExactly("tomorrow", "edge").inOrder()
+    }
+
     // --- refresh ---
 
     @Test

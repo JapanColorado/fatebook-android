@@ -32,6 +32,21 @@ interface QuestionDao {
     )
     suspend fun countReadyToResolve(nowEpochMs: Long): Int
 
+    /**
+     * Unresolved questions due after [todayEpochMs] and on or before [untilEpochMs]
+     * — the "resolving soon" window. Ready-to-resolve rows are excluded.
+     */
+    @Query(
+        """
+        SELECT * FROM questions
+        WHERE resolved = 0
+          AND resolveByEpochMs > :todayEpochMs
+          AND resolveByEpochMs <= :untilEpochMs
+        ORDER BY resolveByEpochMs ASC
+        """
+    )
+    fun observeResolvingSoon(todayEpochMs: Long, untilEpochMs: Long): Flow<List<QuestionEntity>>
+
     @Query("SELECT * FROM questions WHERE resolved = 1 ORDER BY resolveByEpochMs DESC")
     fun observeResolved(): Flow<List<QuestionEntity>>
 

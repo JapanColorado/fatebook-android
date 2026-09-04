@@ -4,7 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.russell.fatebook.data.preferences.UserPreferences
-import dev.russell.fatebook.data.repository.QuestionRepository
+import dev.russell.fatebook.data.repository.ApiKeyConnector
+import dev.russell.fatebook.data.repository.ConnectResult
 import dev.russell.fatebook.notification.ReminderScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,7 +29,7 @@ data class SettingsUiState(
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val prefs: UserPreferences,
-    private val repository: QuestionRepository,
+    private val connector: ApiKeyConnector,
     private val reminderScheduler: ReminderScheduler,
 ) : ViewModel() {
 
@@ -71,17 +72,12 @@ class SettingsViewModel @Inject constructor(
             _validationError.value = null
             _validationResult.value = null
 
-            // Temporarily set the key so the interceptor uses it
-            val key = _apiKey.value.trim()
-            prefs.apiKey = key
-
-            val valid = repository.validateApiKey()
-            if (valid) {
-                _validationResult.value = true
-            } else {
-                prefs.apiKey = null
-                _validationResult.value = false
-                _validationError.value = "Invalid API key — could not connect to Fatebook"
+            when (connector.connect(_apiKey.value)) {
+                ConnectResult.Success -> _validationResult.value = true
+                ConnectResult.Invalid -> {
+                    _validationResult.value = false
+                    _validationError.value = "Invalid API key — could not connect to Fatebook"
+                }
             }
             _isValidating.value = false
         }

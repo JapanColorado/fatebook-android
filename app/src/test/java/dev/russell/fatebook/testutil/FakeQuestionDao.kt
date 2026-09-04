@@ -36,6 +36,16 @@ class FakeQuestionDao : QuestionDao {
                 .sortedBy { it.resolveByEpochMs }
         }
 
+    override fun observeResolvingSoon(
+        todayEpochMs: Long,
+        untilEpochMs: Long,
+    ): Flow<List<QuestionEntity>> =
+        _questions.map { list ->
+            list.filter {
+                !it.resolved && it.resolveByEpochMs > todayEpochMs && it.resolveByEpochMs <= untilEpochMs
+            }.sortedBy { it.resolveByEpochMs }
+        }
+
     override suspend fun countReadyToResolve(nowEpochMs: Long): Int =
         _questions.value.count { !it.resolved && it.resolveByEpochMs <= nowEpochMs }
 

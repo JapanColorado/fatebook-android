@@ -115,6 +115,23 @@ class QuestionRepository @Inject constructor(
     suspend fun getReadyToResolve(): List<Question> =
         observeReadyToResolve().first()
 
+    /**
+     * Unresolved questions whose resolve-by date is within the next [withinDays]
+     * days (exclusive of today, inclusive of today + [withinDays]).
+     */
+    fun observeResolvingSoon(withinDays: Int): Flow<List<Question>> {
+        val today = LocalDate.now()
+        val todayUtcMs = today.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val untilUtcMs = today.plusDays(withinDays.toLong())
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
+            .toEpochMilli()
+        return dao.observeResolvingSoon(todayUtcMs, untilUtcMs).joinOptions()
+    }
+
+    suspend fun getResolvingSoon(withinDays: Int): List<Question> =
+        observeResolvingSoon(withinDays).first()
+
     /** One question by id, with its options joined — null if not cached. */
     suspend fun getQuestion(questionId: String): Question? {
         val entity = dao.getById(questionId) ?: return null

@@ -2,6 +2,9 @@ package dev.russell.fatebook.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -12,6 +15,7 @@ import dev.russell.fatebook.ui.analytics.AnalyticsScreen
 import dev.russell.fatebook.ui.create.CreateScreen
 import dev.russell.fatebook.ui.feed.FeedFilter
 import dev.russell.fatebook.ui.feed.FeedScreen
+import dev.russell.fatebook.ui.onboarding.OnboardingScreen
 import dev.russell.fatebook.ui.settings.SettingsScreen
 
 @Composable
@@ -24,7 +28,21 @@ fun FatebookNavGraph(
     sharedText: String? = null,
 ) {
     val navController = rememberNavController()
-    val startDestination = if (userPreferences.hasApiKey) Routes.FEED else Routes.SETTINGS
+    // Keyless users go through onboarding; anyone with a key (including users
+    // upgrading from before onboarding existed) lands on the feed. A sync read
+    // keeps the first frame right — no flash of the wrong screen.
+    val startDestination = remember {
+        if (userPreferences.hasApiKey) Routes.FEED else Routes.ONBOARDING
+    }
+
+    // If the key ever disappears while the app is running, drop back to onboarding.
+    val hasApiKey by userPreferences.hasApiKeyFlow.collectAsStateWithLifecycle()
+    LaunchedEffect(hasApiKey) {
+        val current = navController.currentDestination?.route
+        if (!hasApiKey && current != null && current != Routes.ONBOARDING) {
+            navController.navigate(Routes.ONBOARDING) { popUpTo(0) { inclusive = true } }
+        }
+    }
 
     LaunchedEffect(openCreate, sharedText) {
         if ((openCreate || sharedText != null) && startDestination == Routes.FEED) {
@@ -33,6 +51,20 @@ fun FatebookNavGraph(
     }
 
     NavHost(navController = navController, startDestination = startDestination) {
+        composable(Routes.ONBOARDING) {
+            OnboardingScreen(
+                onFinished = {
+                    navController.navigate(Routes.FEED) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                    // A shortcut/share that arrived keyless still gets honoured.
+                    if (openCreate || sharedText != null) {
+                        navController.navigate(Routes.create(sharedText))
+                    }
+                },
+            )
+        }
+
         composable(Routes.FEED) {
             FeedScreen(
                 onCreateClick = { navController.navigate(Routes.create()) },

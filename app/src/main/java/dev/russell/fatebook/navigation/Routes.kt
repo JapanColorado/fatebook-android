@@ -3,6 +3,7 @@ package dev.russell.fatebook.navigation
 import android.net.Uri
 
 object Routes {
+    const val ONBOARDING = "onboarding"
     const val FEED = "feed"
 
     /** Route pattern; prefill is an optional title seed (share-target flow). */

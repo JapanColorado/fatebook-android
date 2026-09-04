@@ -15,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,14 +26,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberTimePickerState
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,8 +38,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import dev.russell.fatebook.ui.components.ReminderTimeDialog
+import dev.russell.fatebook.ui.components.rememberNotificationPermissionRequester
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,30 +53,11 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        viewModel.onNotificationPermissionResult(granted)
-    }
+    val requestNotificationPermission =
+        rememberNotificationPermissionRequester(viewModel::onNotificationPermissionResult)
 
     LaunchedEffect(state.shouldRequestNotificationPermission) {
-        if (state.shouldRequestNotificationPermission) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val hasPermission = ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.POST_NOTIFICATIONS,
-                ) == PackageManager.PERMISSION_GRANTED
-
-                if (hasPermission) {
-                    viewModel.onNotificationPermissionResult(true)
-                } else {
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
-            } else {
-                // Pre-Android 13 — permission not needed at runtime
-                viewModel.onNotificationPermissionResult(true)
-            }
-        }
+        if (state.shouldRequestNotificationPermission) requestNotificationPermission()
     }
 
     LaunchedEffect(state.validationResult) {
@@ -234,30 +208,14 @@ fun SettingsScreenContent(
                 )
 
                 if (showTimePicker) {
-                    val timePickerState = rememberTimePickerState(
-                        initialHour = state.reminderHour,
-                        initialMinute = state.reminderMinute,
-                    )
-                    AlertDialog(
-                        onDismissRequest = { showTimePicker = false },
-                        confirmButton = {
-                            Button(onClick = {
-                                onReminderTimeChanged(
-                                    timePickerState.hour,
-                                    timePickerState.minute,
-                                )
-                                showTimePicker = false
-                            }) {
-                                Text("Set")
-                            }
+                    ReminderTimeDialog(
+                        hour = state.reminderHour,
+                        minute = state.reminderMinute,
+                        onConfirm = { hour, minute ->
+                            onReminderTimeChanged(hour, minute)
+                            showTimePicker = false
                         },
-                        dismissButton = {
-                            TextButton(onClick = { showTimePicker = false }) {
-                                Text("Cancel")
-                            }
-                        },
-                        title = { Text("Reminder time") },
-                        text = { TimePicker(state = timePickerState) },
+                        onDismiss = { showTimePicker = false },
                     )
                 }
             }

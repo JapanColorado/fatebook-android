@@ -6,8 +6,8 @@
 
 ## Feature Ideas
 
-- [ ] Quick-forecast templates (pre-filled question patterns for recurring prediction types)
-- [ ] Home screen widget for quick-create
+- [x] Quick-forecast templates (pre-filled question patterns for recurring prediction types)
+- [x] Home screen widget for quick-create
 - [ ] Deep linking for fatebook.io/q/* URLs (requires Android App Links domain verification or custom scheme)
 - [x] Ready to resolve notifications
 - [x] Fix make a daily prediction notification

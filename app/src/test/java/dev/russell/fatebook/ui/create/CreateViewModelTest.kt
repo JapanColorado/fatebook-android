@@ -3,9 +3,15 @@ package dev.russell.fatebook.ui.create
 import androidx.lifecycle.SavedStateHandle
 import com.google.common.truth.Truth.assertThat
 import dev.russell.fatebook.data.repository.QuestionRepository
+import dev.russell.fatebook.data.repository.TemplateRepository
+import dev.russell.fatebook.domain.model.QuestionTemplate
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -23,10 +29,12 @@ class CreateViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private val repository = mockk<QuestionRepository>(relaxed = true)
+    private val templateRepository = mockk<TemplateRepository>(relaxed = true)
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
+        every { templateRepository.observeTemplates() } returns flowOf(emptyList())
     }
 
     @After
@@ -35,7 +43,7 @@ class CreateViewModelTest {
     }
 
     private fun createViewModel(savedStateHandle: SavedStateHandle = SavedStateHandle()) =
-        CreateViewModel(repository, savedStateHandle)
+        CreateViewModel(repository, templateRepository, savedStateHandle)
 
     @Test
     fun `prefill from SavedStateHandle seeds the title`() {
@@ -226,5 +234,77 @@ class CreateViewModelTest {
                 tags = listOf("work", "health"),
             )
         }
+    }
+
+    // --- Templates ---
+
+    private val gymTemplate = QuestionTemplate(
+        id = 7,
+        title = "Gym 3x this week?",
+        defaultProbability = 0.7,
+        tags = listOf("health"),
+        resolveOffsetDays = 7,
+    )
+
+    @Test
+    fun `templates from the repository reach state`() = runTest {
+        every { templateRepository.observeTemplates() } returns flowOf(listOf(gymTemplate))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertThat(vm.state.value.templates).containsExactly(gymTemplate)
+    }
+
+    @Test
+    fun `applyTemplate fills the form with the date offset from today`() {
+        val vm = createViewModel()
+        vm.setTagInput("stale")
+
+        vm.applyTemplate(gymTemplate)
+
+        val state = vm.state.value
+        assertThat(state.title).isEqualTo("Gym 3x this week?")
+        assertThat(state.forecast).isEqualTo(0.7f)
+        assertThat(state.tags).containsExactly("health")
+        assertThat(state.tagInput).isEmpty()
+        assertThat(state.resolveBy).isEqualTo(LocalDate.now().plusDays(7))
+    }
+
+    @Test
+    fun `saveCurrentAsTemplate stores the form with a day offset and pending tag`() = runTest {
+        val vm = createViewModel()
+        vm.setTitle("Ship the release?")
+        vm.setForecast(0.6f)
+        vm.setResolveBy(LocalDate.now().plusDays(10))
+        vm.addTag()
+        vm.setTagInput("work")
+
+        vm.saveCurrentAsTemplate()
+        advanceUntilIdle()
+
+        coVerify { templateRepository.save("Ship the release?", 0.6, listOf("work"), 10) }
+        assertThat(vm.state.value.templateMessage).isEqualTo("Template saved")
+    }
+
+    @Test
+    fun `saveCurrentAsTemplate rejects a blank title`() = runTest {
+        val vm = createViewModel()
+
+        vm.saveCurrentAsTemplate()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { templateRepository.save(any(), any(), any(), any()) }
+        assertThat(vm.state.value.error).isNotNull()
+    }
+
+    @Test
+    fun `deleteTemplate delegates to the repository`() = runTest {
+        val vm = createViewModel()
+
+        vm.deleteTemplate(7)
+        advanceUntilIdle()
+
+        coVerify { templateRepository.delete(7) }
     }
 }

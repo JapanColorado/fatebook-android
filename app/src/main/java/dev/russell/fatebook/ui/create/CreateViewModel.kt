@@ -5,11 +5,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.russell.fatebook.data.repository.QuestionRepository
+import dev.russell.fatebook.data.repository.TemplateRepository
+import dev.russell.fatebook.domain.model.QuestionTemplate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 import javax.inject.Inject
 
@@ -22,11 +28,15 @@ data class CreateUiState(
     val isSubmitting: Boolean = false,
     val error: String? = null,
     val success: Boolean = false,
+    val templates: List<QuestionTemplate> = emptyList(),
+    /** One-shot snackbar text after saving a template; cleared via [CreateViewModel.templateMessageShown]. */
+    val templateMessage: String? = null,
 )
 
 @HiltViewModel
 class CreateViewModel @Inject constructor(
     private val repository: QuestionRepository,
+    private val templateRepository: TemplateRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -38,6 +48,53 @@ class CreateViewModel @Inject constructor(
         savedStateHandle.get<String>("prefill")
             ?.takeIf { it.isNotBlank() }
             ?.let { prefill -> _state.value = _state.value.copy(title = prefill) }
+
+        templateRepository.observeTemplates()
+            .onEach { templates -> _state.update { it.copy(templates = templates) } }
+            .launchIn(viewModelScope)
+    }
+
+    // --- Templates ---
+
+    /** Fill the form from a saved pattern; the resolve date is offset from today. */
+    fun applyTemplate(template: QuestionTemplate) {
+        _state.update {
+            it.copy(
+                title = template.title,
+                forecast = template.defaultProbability.toFloat(),
+                tags = template.tags,
+                tagInput = "",
+                resolveBy = LocalDate.now().plusDays(template.resolveOffsetDays.toLong()),
+                error = null,
+            )
+        }
+    }
+
+    /** Save the current form as a template. Needs a title; a pending tag input counts. */
+    fun saveCurrentAsTemplate() {
+        val current = _state.value
+        if (current.title.isBlank()) {
+            _state.update { it.copy(error = "Give the prediction a title before saving it as a template") }
+            return
+        }
+        val offset = ChronoUnit.DAYS.between(LocalDate.now(), current.resolveBy).toInt()
+        viewModelScope.launch {
+            templateRepository.save(
+                title = current.title,
+                defaultProbability = (current.forecast * 100).roundToInt() / 100.0,
+                tags = withTagInput(current.tags, current.tagInput),
+                resolveOffsetDays = offset,
+            )
+            _state.update { it.copy(templateMessage = "Template saved") }
+        }
+    }
+
+    fun deleteTemplate(id: Long) {
+        viewModelScope.launch { templateRepository.delete(id) }
+    }
+
+    fun templateMessageShown() {
+        _state.update { it.copy(templateMessage = null) }
     }
 
     fun setTitle(title: String) {

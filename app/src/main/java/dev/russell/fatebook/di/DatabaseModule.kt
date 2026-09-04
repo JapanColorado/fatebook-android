@@ -14,6 +14,8 @@ import dev.russell.fatebook.data.local.ForecastDao
 import dev.russell.fatebook.data.local.OptionDao
 import dev.russell.fatebook.data.local.PendingMutationDao
 import dev.russell.fatebook.data.local.QuestionDao
+import dev.russell.fatebook.data.local.TemplateDao
+import dev.russell.fatebook.data.local.TemplateDatabase
 import dev.russell.fatebook.data.local.Transactor
 import javax.inject.Singleton
 
@@ -50,6 +52,21 @@ object DatabaseModule {
     @Provides
     fun providePendingMutationDao(database: FatebookDatabase): PendingMutationDao =
         database.pendingMutationDao()
+
+    // Templates are user-authored, so they get their own DB with no destructive
+    // fallback — a cache-schema bump must never wipe them.
+    @Provides
+    @Singleton
+    fun provideTemplateDatabase(@ApplicationContext context: Context): TemplateDatabase =
+        Room.databaseBuilder(
+            context,
+            TemplateDatabase::class.java,
+            "templates.db",
+        ).build()
+
+    @Provides
+    fun provideTemplateDao(database: TemplateDatabase): TemplateDao =
+        database.templateDao()
 
     @Provides
     @Singleton

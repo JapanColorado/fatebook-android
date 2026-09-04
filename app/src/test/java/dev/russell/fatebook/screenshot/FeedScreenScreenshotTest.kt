@@ -63,6 +63,49 @@ class FeedScreenScreenshotTest {
     }
 
     @Test
+    fun feedScreen_emptyResolvingSoon() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                FeedScreenContent(
+                    state = FeedUiState(
+                        isInitialLoad = false,
+                        questions = emptyList(),
+                        filter = FeedFilter.RESOLVING_SOON,
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun feedScreen_resolvingSoon() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                FeedScreenContent(
+                    state = FeedUiState(
+                        isInitialLoad = false,
+                        filter = FeedFilter.RESOLVING_SOON,
+                        questions = listOf(
+                            TestData.question(
+                                id = "1",
+                                title = "Will the CI run go green on the first try?",
+                                yourLatestForecast = 0.3,
+                                resolveBy = Instant.parse("2030-06-03T00:00:00Z"),
+                            ),
+                            TestData.question(
+                                id = "2",
+                                title = "Will I hit my step goal this week?",
+                                yourLatestForecast = 0.7,
+                                resolveBy = Instant.parse("2030-06-07T00:00:00Z"),
+                            ),
+                        ),
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
     fun feedScreen_withQuestions() {
         paparazzi.snapshot {
             FatebookTheme(dynamicColor = false) {

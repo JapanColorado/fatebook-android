@@ -23,7 +23,17 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.RadioButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import dev.russell.fatebook.domain.model.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -112,7 +122,7 @@ fun QuestionDetailSheet(
     onDismissDeleteConfirmation: () -> Unit,
     onCommentTextChange: (String) -> Unit,
     onAddComment: () -> Unit,
-    onToggleSharedPublicly: () -> Unit,
+    onVisibilityChange: (Visibility) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -150,7 +160,7 @@ fun QuestionDetailSheet(
                     onPushResolveBy = onPushResolveBy,
                     onEnterEditMode = onEnterEditMode,
                     onDeleteClick = onDeleteClick,
-                    onToggleSharedPublicly = onToggleSharedPublicly,
+                    onVisibilityChange = onVisibilityChange,
                     onCommentTextChange = onCommentTextChange,
                     onAddComment = onAddComment,
                 )
@@ -201,7 +211,7 @@ private fun ColumnScope.ReadModeContent(
     onPushResolveBy: (Period) -> Unit,
     onEnterEditMode: () -> Unit,
     onDeleteClick: () -> Unit,
-    onToggleSharedPublicly: () -> Unit,
+    onVisibilityChange: (Visibility) -> Unit,
     onCommentTextChange: (String) -> Unit,
     onAddComment: () -> Unit,
 ) {
@@ -217,7 +227,7 @@ private fun ColumnScope.ReadModeContent(
 
     // Resolve-by date
     Text(
-        text = "${question.resolvesLabel}: ${question.resolveByDate.format(dateFormatter)}",
+        text = "${question.resolvesLabel}: ${question.resolvedOnDate.format(dateFormatter)}",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -439,22 +449,10 @@ private fun ColumnScope.ReadModeContent(
         }) {
             Icon(Icons.Default.OpenInNew, contentDescription = "Open in Fatebook")
         }
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            IconButton(onClick = onToggleSharedPublicly) {
-                Icon(
-                    if (question.sharedPublicly) Icons.Default.Visibility
-                    else Icons.Default.VisibilityOff,
-                    contentDescription = if (question.sharedPublicly) "Make private" else "Make public",
-                )
-            }
-            Text(
-                text = if (question.sharedPublicly) "Public" else "Private",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        VisibilityMenu(
+            current = question.visibility,
+            onVisibilityChange = onVisibilityChange,
+        )
     }
 
     // Forecast history — only interesting when someone besides you has
@@ -525,14 +523,15 @@ private fun ColumnScope.ReadModeContent(
     // Add comment
     Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Bottom,
     ) {
         OutlinedTextField(
             value = detailState.commentText,
             onValueChange = onCommentTextChange,
             modifier = Modifier.weight(1f),
             placeholder = { Text("Add a comment...") },
-            singleLine = true,
+            maxLines = 4,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             enabled = !detailState.isAddingComment,
         )
         Spacer(modifier = Modifier.width(8.dp))
@@ -921,6 +920,67 @@ private fun ForecastHistoryRow(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+private fun Visibility.label(): String = when (this) {
+    Visibility.PRIVATE -> "Private"
+    Visibility.UNLISTED -> "Unlisted"
+    Visibility.PUBLIC -> "Public"
+}
+
+private fun Visibility.description(): String = when (this) {
+    Visibility.PRIVATE -> "Only you"
+    Visibility.UNLISTED -> "Anyone with the link"
+    Visibility.PUBLIC -> "Listed on fatebook.io"
+}
+
+@Composable
+private fun Visibility.icon() = when (this) {
+    Visibility.PRIVATE -> Icons.Default.VisibilityOff
+    Visibility.UNLISTED -> Icons.Default.Link
+    Visibility.PUBLIC -> Icons.Default.Public
+}
+
+/** Icon + label showing the current visibility; tapping opens a three-way picker. */
+@Composable
+private fun VisibilityMenu(
+    current: Visibility,
+    onVisibilityChange: (Visibility) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            IconButton(onClick = { expanded = true }) {
+                Icon(current.icon(), contentDescription = "Change visibility")
+            }
+            Text(
+                text = current.label(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            Visibility.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(option.label())
+                            Text(
+                                option.description(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    leadingIcon = { RadioButton(selected = option == current, onClick = null) },
+                    onClick = {
+                        expanded = false
+                        onVisibilityChange(option)
+                    },
+                )
+            }
+        }
     }
 }
 

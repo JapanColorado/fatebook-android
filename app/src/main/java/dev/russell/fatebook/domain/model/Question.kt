@@ -3,6 +3,7 @@ package dev.russell.fatebook.domain.model
 import androidx.compose.runtime.Immutable
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlin.math.roundToInt
 
@@ -16,6 +17,13 @@ enum class QuestionType {
         fun fromApi(value: String?): QuestionType =
             entries.firstOrNull { it.name == value } ?: BINARY
     }
+}
+
+/** Who can see a question on fatebook.io. Maps onto the API's sharedPublicly + unlisted flags. */
+enum class Visibility {
+    PRIVATE,
+    UNLISTED,
+    PUBLIC,
 }
 
 @Immutable
@@ -47,6 +55,17 @@ data class Question(
 
     val isReadyToResolve: Boolean
         get() = !resolved && !LocalDate.now().isBefore(resolveByDate)
+
+    /** The day a resolved question was actually resolved (device zone), falling back to the deadline. */
+    val resolvedOnDate: LocalDate
+        get() = resolvedAt?.atZone(ZoneId.systemDefault())?.toLocalDate() ?: resolveByDate
+
+    val visibility: Visibility
+        get() = when {
+            !sharedPublicly -> Visibility.PRIVATE
+            unlisted -> Visibility.UNLISTED
+            else -> Visibility.PUBLIC
+        }
 
     val resolvesLabel: String
         get() = if (resolved) "Resolved" else "Resolves"

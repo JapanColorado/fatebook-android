@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.russell.fatebook.domain.model.Visibility
 import dev.russell.fatebook.ui.components.ErrorBanner
 import dev.russell.fatebook.ui.components.OfflineBanner
 import dev.russell.fatebook.ui.components.QuestionCard
@@ -135,7 +136,7 @@ fun FeedScreen(
         onDismissDeleteConfirmation = viewModel::dismissDeleteConfirmation,
         onCommentTextChange = viewModel::setCommentText,
         onAddComment = viewModel::addComment,
-        onToggleSharedPublicly = viewModel::toggleSharedPublicly,
+        onVisibilityChange = viewModel::setVisibility,
         onShowSyncErrors = viewModel::showSyncErrorsSheet,
         onDismissSyncErrorsSheet = viewModel::dismissSyncErrorsSheet,
         onRetryAllSyncErrors = viewModel::retryAllSyncErrors,
@@ -176,7 +177,7 @@ fun FeedScreenContent(
     onDismissDeleteConfirmation: () -> Unit = {},
     onCommentTextChange: (String) -> Unit = {},
     onAddComment: () -> Unit = {},
-    onToggleSharedPublicly: () -> Unit = {},
+    onVisibilityChange: (Visibility) -> Unit = {},
     onShowSyncErrors: () -> Unit = {},
     onDismissSyncErrorsSheet: () -> Unit = {},
     onRetryAllSyncErrors: () -> Unit = {},
@@ -254,6 +255,7 @@ fun FeedScreenContent(
                                 when (filter) {
                                     FeedFilter.ACTIVE -> "Active"
                                     FeedFilter.READY_TO_RESOLVE -> "Ready to Resolve"
+                                    FeedFilter.RESOLVING_SOON -> "Resolving soon"
                                     FeedFilter.RESOLVED -> "Resolved"
                                 }
                             )
@@ -323,6 +325,7 @@ fun FeedScreenContent(
                                     when (state.filter) {
                                         FeedFilter.ACTIVE -> "No active predictions"
                                         FeedFilter.READY_TO_RESOLVE -> "Nothing to resolve"
+                                        FeedFilter.RESOLVING_SOON -> "Nothing resolving this week"
                                         FeedFilter.RESOLVED -> "No resolved predictions yet"
                                     }
                                 },
@@ -412,7 +415,7 @@ fun FeedScreenContent(
             onDismissDeleteConfirmation = onDismissDeleteConfirmation,
             onCommentTextChange = onCommentTextChange,
             onAddComment = onAddComment,
-            onToggleSharedPublicly = onToggleSharedPublicly,
+            onVisibilityChange = onVisibilityChange,
             onDismiss = onDismissDetailSheet,
         )
     }
@@ -437,7 +440,7 @@ private fun SortMenuAction(
                     text = {
                         Text(
                             when (option) {
-                                FeedSort.RESOLVE_BY -> "By resolve date"
+                                FeedSort.RESOLVE_BY -> "By resolve date (soonest first)"
                                 FeedSort.CREATED_NEWEST -> "Newest first"
                             },
                         )

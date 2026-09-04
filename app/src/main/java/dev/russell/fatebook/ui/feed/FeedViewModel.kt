@@ -12,6 +12,7 @@ import dev.russell.fatebook.domain.model.Comment
 import dev.russell.fatebook.domain.model.Forecast
 import dev.russell.fatebook.domain.model.McResolution
 import dev.russell.fatebook.domain.model.Question
+import dev.russell.fatebook.domain.model.Visibility
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.di.DefaultDispatcher
 import dev.russell.fatebook.ui.components.PieChartMath
@@ -39,7 +40,18 @@ import java.time.LocalDate
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
-enum class FeedFilter { ACTIVE, READY_TO_RESOLVE, RESOLVED }
+enum class FeedFilter {
+    ACTIVE,
+    READY_TO_RESOLVE,
+    RESOLVING_SOON,
+    RESOLVED,
+    ;
+
+    companion object {
+        /** RESOLVING_SOON shows unresolved questions due within this many days (excluding today). */
+        const val RESOLVING_SOON_DAYS = 7
+    }
+}
 
 enum class FeedSort {
     /** Soonest resolve-by date first (resolved filter shows newest first). */
@@ -154,6 +166,8 @@ class FeedViewModel @Inject constructor(
             when (filter) {
                 FeedFilter.ACTIVE -> repository.observeActive()
                 FeedFilter.READY_TO_RESOLVE -> repository.observeReadyToResolve()
+                FeedFilter.RESOLVING_SOON ->
+                    repository.observeResolvingSoon(FeedFilter.RESOLVING_SOON_DAYS)
                 FeedFilter.RESOLVED -> repository.observeResolved()
             }
         }
@@ -445,14 +459,16 @@ class FeedViewModel @Inject constructor(
 
     // --- Share / Visibility ---
 
-    fun toggleSharedPublicly() {
+    fun setVisibility(visibility: Visibility) {
         val question = _detail.value.question ?: return
-        val newShared = !question.sharedPublicly
+        if (question.visibility == visibility) return
+        val shared = visibility != Visibility.PRIVATE
+        val unlisted = visibility == Visibility.UNLISTED
         viewModelScope.launch {
             try {
-                repository.setSharedPublicly(question.id, newShared, question.unlisted)
+                repository.setSharedPublicly(question.id, shared, unlisted)
                 _detail.update {
-                    it.copy(question = question.copy(sharedPublicly = newShared))
+                    it.copy(question = question.copy(sharedPublicly = shared, unlisted = unlisted))
                 }
             } catch (e: Exception) {
                 _error.value = classifyError(e, "Failed to update sharing")

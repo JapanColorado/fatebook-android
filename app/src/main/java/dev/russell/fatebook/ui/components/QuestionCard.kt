@@ -5,10 +5,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,6 +44,7 @@ fun QuestionCard(
     question: Question,
     onClick: (Question) -> Unit,
     modifier: Modifier = Modifier,
+    today: LocalDate = LocalDate.now(),
 ) {
     // rememberUpdatedState so the click reads the latest question after edits —
     // keying on question.id alone leaves a stale closure when fields change.
@@ -48,13 +53,14 @@ fun QuestionCard(
     // Clock reads (Instant.now / LocalDate.now) and the allocating resolveByDate
     // getter are per-question facts for display purposes — compute once per
     // question instead of on every recomposition.
-    val dateLine = remember(question) {
+    val dateLine = remember(question, today) {
         if (question.resolved) {
-            "Resolved ${absoluteDate(question.resolveByDate)}"
+            "Resolved ${absoluteDate(question.resolvedOnDate)}"
         } else {
-            "Resolution ${relativeDate(question.resolveByDate)}"
+            "Resolution ${relativeDate(question.resolveByDate, today)}"
         }
     }
+    val urgency = remember(question, today) { urgencyOf(question, today) }
     val forecastHidden = remember(question) { question.isForecastHidden }
     val predictedLine = remember(question) {
         question.latestForecastAt?.let { "Predicted ${timeAgo(it)}" }
@@ -83,11 +89,29 @@ fun QuestionCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = dateLine,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (urgency == Urgency.OVERDUE) {
+                        Icon(
+                            Icons.Default.Schedule,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Text(
+                        text = dateLine,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (urgency) {
+                            Urgency.OVERDUE -> MaterialTheme.colorScheme.error
+                            Urgency.DUE_TODAY -> MaterialTheme.colorScheme.primary
+                            Urgency.NONE -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontWeight = if (urgency == Urgency.NONE) null else FontWeight.SemiBold,
+                    )
+                }
                 if (question.tags.isNotEmpty()) {
                     TagChipRow(tags = question.tags, maxVisible = 2)
                 }
@@ -249,8 +273,16 @@ private fun timeAgo(instant: Instant): String {
 
 private fun absoluteDate(date: LocalDate): String = date.format(MONTH_DAY_YEAR)
 
-private fun relativeDate(date: LocalDate): String {
-    val today = LocalDate.now()
+private enum class Urgency { NONE, DUE_TODAY, OVERDUE }
+
+private fun urgencyOf(question: Question, today: LocalDate): Urgency = when {
+    question.resolved -> Urgency.NONE
+    question.resolveByDate.isBefore(today) -> Urgency.OVERDUE
+    question.resolveByDate == today -> Urgency.DUE_TODAY
+    else -> Urgency.NONE
+}
+
+private fun relativeDate(date: LocalDate, today: LocalDate): String {
     val daysDiff = ChronoUnit.DAYS.between(today, date)
     return when {
         daysDiff < -1 -> "${-daysDiff}d overdue"

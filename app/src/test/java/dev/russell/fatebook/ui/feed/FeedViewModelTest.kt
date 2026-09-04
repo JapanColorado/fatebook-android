@@ -6,6 +6,7 @@ import dev.russell.fatebook.data.preferences.UserPreferences
 import dev.russell.fatebook.data.repository.QuestionRepository
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
+import dev.russell.fatebook.domain.model.Visibility
 import dev.russell.fatebook.testutil.TestData
 import io.mockk.Runs
 import io.mockk.coEvery
@@ -45,6 +46,7 @@ class FeedViewModelTest {
         coEvery { repository.observeActive() } returns flowOf(emptyList())
         coEvery { repository.observeResolved() } returns flowOf(emptyList())
         coEvery { repository.observeReadyToResolve() } returns flowOf(emptyList())
+        coEvery { repository.observeResolvingSoon(any()) } returns flowOf(emptyList())
         coEvery { repository.observeAllTags() } returns flowOf(emptyList())
         coEvery { repository.observeErroredMutations() } returns flowOf(emptyList())
         coEvery { repository.refresh() } just Runs
@@ -472,7 +474,7 @@ class FeedViewModelTest {
     }
 
     @Test
-    fun `toggleSharedPublicly calls repository`() = runTest {
+    fun `setVisibility PUBLIC shares without unlisted`() = runTest {
         val question = TestData.question(id = "q1")
 
         val vm = createViewModel()
@@ -483,10 +485,63 @@ class FeedViewModelTest {
 
         vm.showDetailSheet(question)
         advanceUntilIdle()
-        vm.toggleSharedPublicly()
+        vm.setVisibility(Visibility.PUBLIC)
         advanceUntilIdle()
 
         coVerify { repository.setSharedPublicly("q1", true, false) }
+        assertThat(vm.detail.value.question?.visibility).isEqualTo(Visibility.PUBLIC)
+    }
+
+    @Test
+    fun `setVisibility UNLISTED shares with unlisted`() = runTest {
+        val question = TestData.question(id = "q1")
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.setVisibility(Visibility.UNLISTED)
+        advanceUntilIdle()
+
+        coVerify { repository.setSharedPublicly("q1", true, true) }
+        assertThat(vm.detail.value.question?.visibility).isEqualTo(Visibility.UNLISTED)
+    }
+
+    @Test
+    fun `setVisibility to the current value is a no-op`() = runTest {
+        val question = TestData.question(id = "q1")
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.showDetailSheet(question)
+        advanceUntilIdle()
+        vm.setVisibility(Visibility.PRIVATE)
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.setSharedPublicly(any(), any(), any()) }
+    }
+
+    @Test
+    fun `setFilter RESOLVING_SOON observes the resolving-soon flow`() = runTest {
+        val soon = TestData.question(id = "soon")
+        coEvery { repository.observeResolvingSoon(FeedFilter.RESOLVING_SOON_DAYS) } returns flowOf(listOf(soon))
+
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.setFilter(FeedFilter.RESOLVING_SOON)
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.filter).isEqualTo(FeedFilter.RESOLVING_SOON)
+        assertThat(vm.uiState.value.questions.map { it.id }).containsExactly("soon")
     }
 
     // --- HTTP error classification ---

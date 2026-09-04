@@ -17,6 +17,7 @@ import dev.russell.fatebook.ui.theme.FatebookTheme
 import org.junit.Rule
 import org.junit.Test
 import java.time.Instant
+import java.time.LocalDate
 
 class ComponentScreenshotTest {
 
@@ -270,6 +271,78 @@ class ComponentScreenshotTest {
                         title = "Did it rain yesterday?",
                         resolved = true,
                         resolution = Resolution.YES,
+                    ),
+                    onClick = {},
+                )
+            }
+        }
+    }
+
+    // Overdue / due-today styling is relative to `today`, which is injected so
+    // the goldens don't drift as the calendar moves.
+
+    @Test
+    fun questionCard_overdue() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                QuestionCard(
+                    question = TestData.question(
+                        title = "Will the package arrive this week?",
+                        yourLatestForecast = 0.6,
+                        resolveBy = Instant.parse("2030-06-01T00:00:00Z"),
+                    ),
+                    onClick = {},
+                    today = LocalDate.of(2030, 6, 5),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun questionCard_overdue_dark() {
+        paparazzi.snapshot {
+            FatebookTheme(darkTheme = true, dynamicColor = false) {
+                QuestionCard(
+                    question = TestData.question(
+                        title = "Will the package arrive this week?",
+                        yourLatestForecast = 0.6,
+                        resolveBy = Instant.parse("2030-06-01T00:00:00Z"),
+                    ),
+                    onClick = {},
+                    today = LocalDate.of(2030, 6, 5),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun questionCard_dueToday() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                QuestionCard(
+                    question = TestData.question(
+                        title = "Will I finish the report today?",
+                        yourLatestForecast = 0.4,
+                        resolveBy = Instant.parse("2030-06-01T00:00:00Z"),
+                    ),
+                    onClick = {},
+                    today = LocalDate.of(2030, 6, 1),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun questionCard_resolved_withResolvedAt() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                QuestionCard(
+                    question = TestData.question(
+                        title = "Did it rain yesterday?",
+                        resolved = true,
+                        resolution = Resolution.NO,
+                        resolveBy = Instant.parse("2030-06-01T00:00:00Z"),
+                        resolvedAt = Instant.parse("2030-05-28T15:00:00Z"),
                     ),
                     onClick = {},
                 )

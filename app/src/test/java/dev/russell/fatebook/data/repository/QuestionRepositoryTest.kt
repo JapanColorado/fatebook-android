@@ -24,6 +24,7 @@ import dev.russell.fatebook.testutil.FakeQuestionDao
 import dev.russell.fatebook.testutil.TestData
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.verify
 import io.mockk.mockk
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -75,6 +76,41 @@ class QuestionRepositoryTest {
             moshi = Moshi.Builder().build(),
             defaultDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
         )
+    }
+
+    // --- current-user inference ---
+
+    @Test
+    fun `refresh infers the current user as the forecaster on the most questions`() = runTest {
+        every { prefs.userId } returns null
+        every { prefs.displayName } returns null
+        fun fc(user: String, name: String) =
+            ForecastDto(user, 0.5, "2020-01-02T00:00:00Z", null, user = UserDto(name = name))
+        api.getQuestionsResponse = {
+            TestData.questionsResponse(
+                items = listOf(
+                    // "friend" forecasts many times on one shared question; "me" is on three.
+                    TestData.questionDto(id = "q1", forecasts = listOf(fc("me", "Me"), fc("friend", "F"), fc("friend", "F"), fc("friend", "F"))),
+                    TestData.questionDto(id = "q2", forecasts = listOf(fc("me", "Me"))),
+                    TestData.questionDto(id = "q3", forecasts = listOf(fc("me", "Me"))),
+                ),
+            )
+        }
+
+        repository.refresh()
+
+        verify { prefs.userId = "me" }
+        verify { prefs.displayName = "Me" }
+    }
+
+    @Test
+    fun `refresh does not re-infer the user once known`() = runTest {
+        every { prefs.userId } returns "already"
+
+        api.getQuestionsResponse = { TestData.questionsResponse(items = listOf(TestData.questionDto())) }
+        repository.refresh()
+
+        verify(exactly = 0) { prefs.userId = any() }
     }
 
     // --- resolving soon ---

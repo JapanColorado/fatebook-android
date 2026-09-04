@@ -96,6 +96,8 @@ data class DetailSheetState(
     val comments: List<Comment> = emptyList(),
     val isLoadingComments: Boolean = false,
     val forecastHistory: List<Forecast> = emptyList(),
+    /** Inferred id of the signed-in user, for picking "your" forecasts out of [forecastHistory]. */
+    val currentUserId: String? = null,
     val commentText: String = "",
     val isAddingComment: Boolean = false,
     val showDeleteConfirmation: Boolean = false,
@@ -309,6 +311,7 @@ class FeedViewModel @Inject constructor(
     fun showDetailSheet(question: Question) {
         _detail.value = DetailSheetState(
             question = question,
+            currentUserId = prefs.userId,
             forecastSliderValue = question.yourLatestForecast?.toFloat() ?: 0.5f,
             pieValues = if (question.isPieEditable) {
                 PieChartMath.initialValues(question.options.map { it.latestForecast })

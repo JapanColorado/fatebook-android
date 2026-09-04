@@ -182,7 +182,7 @@ class QuestionRepository @Inject constructor(
         val response = api.getQuestions()
         nextCursor = response.nextCursor
         commitDtos(response.items, prune = true)
-        captureDisplayName(response.items)
+        captureCurrentUser(response.items)
     }
 
     /** Load the next page and append to cache. Returns true if more pages exist. */
@@ -207,7 +207,7 @@ class QuestionRepository @Inject constructor(
             nextCursor = cursor
         } while (cursor != null)
         commitDtos(collected, prune = true)
-        captureDisplayName(collected)
+        captureCurrentUser(collected)
     }
 
     private class DtoChildren(
@@ -291,12 +291,31 @@ class QuestionRepository @Inject constructor(
                 compareBy({ it.createdAtEpochMs }, { it.optionId ?: "" }, { it.forecast }),
             )
 
-    private fun captureDisplayName(dtos: List<QuestionDto>) {
-        if (prefs.displayName != null) return
-        val name = dtos.firstNotNullOfOrNull { dto ->
-            dto.forecasts?.firstNotNullOfOrNull { it.user?.name }
+    /**
+     * The public API never says which user an API key belongs to. On a
+     * personal feed the caller is the forecaster present on the most
+     * questions, so infer that once and remember it (see [UserPreferences.userId]).
+     * Shared questions the caller hasn't forecast on don't skew this because
+     * each user is counted at most once per question.
+     */
+    private fun captureCurrentUser(dtos: List<QuestionDto>) {
+        if (prefs.userId != null) return
+        val questionCounts = HashMap<String, Int>()
+        val names = HashMap<String, String>()
+        for (dto in dtos) {
+            val forecasts = dto.forecasts.orEmpty()
+            for (userId in forecasts.mapNotNull { it.userId }.toSet()) {
+                questionCounts[userId] = (questionCounts[userId] ?: 0) + 1
+            }
+            for (f in forecasts) {
+                val id = f.userId ?: continue
+                val name = f.user?.name ?: continue
+                names.putIfAbsent(id, name)
+            }
         }
-        if (name != null) prefs.displayName = name
+        val userId = questionCounts.maxByOrNull { it.value }?.key ?: return
+        prefs.userId = userId
+        if (prefs.displayName == null) names[userId]?.let { prefs.displayName = it }
     }
 
     // ---------- Optimistic mutations ----------

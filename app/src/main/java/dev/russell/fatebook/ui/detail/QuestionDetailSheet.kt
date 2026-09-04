@@ -73,6 +73,9 @@ import dev.russell.fatebook.ui.components.PieSegment
 import dev.russell.fatebook.ui.components.ProbabilityPieChart
 import dev.russell.fatebook.ui.components.ProbabilitySlider
 import dev.russell.fatebook.ui.components.TagChipRow
+import java.time.Instant
+import dev.russell.fatebook.ui.components.SparklineMath
+import dev.russell.fatebook.ui.components.ForecastSparkline
 import dev.russell.fatebook.ui.feed.DetailSheetState
 import dev.russell.fatebook.ui.theme.ResolveAmbiguous
 import dev.russell.fatebook.ui.theme.ResolveNo
@@ -465,6 +468,44 @@ private fun ColumnScope.ReadModeContent(
     val hasSharedHistory = remember(visibleHistory) {
         visibleHistory.map { it.userId }.distinct().size > 1
     }
+
+    // Your own trajectory, whether or not anyone else has forecast.
+    val yourForecasts = remember(detailState.forecastHistory, detailState.currentUserId) {
+        SparklineMath.yourForecasts(detailState.forecastHistory, detailState.currentUserId)
+    }
+    if (yourForecasts.size >= 2) {
+        Spacer(modifier = Modifier.height(12.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "Your forecasts",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        val points = remember(yourForecasts, question.createdAt, question.resolvedAt) {
+            SparklineMath.normalize(
+                samples = yourForecasts.map { it.createdAt to (it.forecast ?: 0.0) },
+                start = question.createdAt,
+                end = question.resolvedAt ?: Instant.now(),
+            )
+        }
+        val first = ((yourForecasts.first().forecast ?: 0.0) * 100).roundToInt()
+        val last = ((yourForecasts.last().forecast ?: 0.0) * 100).roundToInt()
+        ForecastSparkline(
+            points = points,
+            contentDescription = "Your forecasts: ${yourForecasts.size} updates, from $first% to $last%",
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        yourForecasts.forEach { forecast ->
+            ForecastHistoryRow(
+                forecast = forecast,
+                optionText = null,
+                dateFormatter = dateFormatter,
+                nameOverride = "You",
+            )
+        }
+    }
+
     if (hasSharedHistory) {
         Spacer(modifier = Modifier.height(12.dp))
         HorizontalDivider()
@@ -889,9 +930,10 @@ private fun ForecastHistoryRow(
     forecast: Forecast,
     optionText: String?,
     dateFormatter: DateTimeFormatter,
+    nameOverride: String? = null,
 ) {
     val pct = ((forecast.forecast ?: 0.0) * 100).roundToInt()
-    val name = forecast.userName ?: "Unknown"
+    val name = nameOverride ?: forecast.userName ?: "Unknown"
     val dateText = forecast.createdAt
         .atZone(ZoneId.systemDefault())
         .format(dateFormatter)

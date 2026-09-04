@@ -1,17 +1,25 @@
 package dev.russell.fatebook.screenshot
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.testutil.TestData
 import dev.russell.fatebook.ui.components.ErrorBanner
+import dev.russell.fatebook.ui.components.ForecastSparkline
 import dev.russell.fatebook.ui.components.OfflineBanner
 import dev.russell.fatebook.ui.components.PieSegment
 import dev.russell.fatebook.ui.components.ProbabilityPieChart
 import dev.russell.fatebook.ui.components.ProbabilitySlider
 import dev.russell.fatebook.ui.components.QuestionCard
 import dev.russell.fatebook.ui.components.ShimmerQuestionCard
+import dev.russell.fatebook.ui.components.SparklinePoint
 import dev.russell.fatebook.ui.components.SyncIssuesBanner
 import dev.russell.fatebook.ui.theme.FatebookTheme
 import org.junit.Rule
@@ -346,6 +354,39 @@ class ComponentScreenshotTest {
                     ),
                     onClick = {},
                 )
+            }
+        }
+    }
+
+    // --- ForecastSparkline ---
+
+    private val risingPoints = listOf(
+        SparklinePoint(0f, 0.3f),
+        SparklinePoint(0.3f, 0.45f),
+        SparklinePoint(0.55f, 0.4f),
+        SparklinePoint(0.8f, 0.7f),
+    )
+
+    @Test
+    fun forecastSparkline_rising() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                // Column gives loose height constraints, as the detail sheet does.
+                Column(Modifier.background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
+                    ForecastSparkline(points = risingPoints, contentDescription = "Your forecasts")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun forecastSparkline_dark() {
+        paparazzi.snapshot {
+            FatebookTheme(darkTheme = true, dynamicColor = false) {
+                // Column gives loose height constraints, as the detail sheet does.
+                Column(Modifier.background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
+                    ForecastSparkline(points = risingPoints, contentDescription = "Your forecasts")
+                }
             }
         }
     }

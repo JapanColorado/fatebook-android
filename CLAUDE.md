@@ -3,15 +3,17 @@
 Unofficial personal Android client for [fatebook.io](https://fatebook.io) prediction tracking.
 Package: `dev.russell.fatebook`
 
-## Build & Deploy
+## Build & Install
 
 All commands go through pixi (which provides the JDK — the system only has a JRE):
 
 ```bash
 pixi run build                  # ./gradlew assembleRelease (day-to-day build)
-pixi run deploy                 # release build + adb install (the default install)
+pixi run install                # release build + install on the connected device (the default install)
+pixi run run                    # install + launch
 pixi run build-debug            # ./gradlew assembleDebug
-pixi run deploy-debug           # debug build + adb install (debugger/layout-inspector sessions)
+pixi run install-debug          # debug build + install (debugger/layout-inspector sessions)
+pixi run run-debug              # debug install + launch
 pixi run clean                  # ./gradlew clean
 pixi run test                   # ./gradlew test (all JVM tests)
 pixi run test-unit              # ./gradlew testDebugUnitTest

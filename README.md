@@ -44,15 +44,17 @@ An unofficial Android client for [Fatebook](https://fatebook.io), the prediction
 ### Prerequisites
 
 - [pixi](https://pixi.sh) package manager
-- Android SDK (installed at `/usr/lib/android-sdk`, or update `local.properties`)
+- Android SDK at `~/Android/Sdk`
 - Android phone with USB debugging enabled
 
 ### Build & Install
 
 ```bash
 pixi install           # Install JDK + Gradle via pixi
-pixi run build         # Build debug APK
-pixi run deploy        # Build + install to connected device
+pixi run build         # Build release APK
+pixi run install       # Build + install release APK on the connected device
+pixi run run           # Install + launch
+pixi run build-debug / install-debug / run-debug   # Debug variants
 ```
 
 > Do not run `./gradlew` directly — the system only has a JRE. pixi provides the full JDK.

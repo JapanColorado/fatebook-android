@@ -20,7 +20,6 @@ captures/
 
 # Pixi
 .pixi/
-pixi.lock
 
 # Android SDK (accidentally installed in project root)
 /build-tools/
@@ -35,3 +34,8 @@ pixi.lock
 # OS
 Thumbs.db
 *~
+
+# Shared Android-Apps baseline
+keystore.properties
+*.jks
+*.keystore

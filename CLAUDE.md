@@ -1,9 +1,10 @@
-# Fatebook Android App
+# CLAUDE.md
 
-Unofficial personal Android client for [fatebook.io](https://fatebook.io) prediction tracking.
-Package: `dev.russell.fatebook`
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Build & Install
+Fatebook (`dev.russell.fatebook`): an unofficial personal Android client for [fatebook.io](https://fatebook.io) prediction tracking.
+
+## Commands
 
 All commands go through pixi (which provides the JDK — the system only has a JRE):
 
@@ -11,17 +12,19 @@ All commands go through pixi (which provides the JDK — the system only has a J
 pixi run build                  # ./gradlew assembleRelease (day-to-day build)
 pixi run install                # release build + install on the connected device (the default install)
 pixi run run                    # install + launch
-pixi run build-debug            # ./gradlew assembleDebug
+pixi run build-debug            # ./gradlew assembleDebug (appId dev.russell.fatebook.debug, installs alongside release)
 pixi run install-debug          # debug build + install (debugger/layout-inspector sessions)
 pixi run run-debug              # debug install + launch
 pixi run clean                  # ./gradlew clean
-pixi run test                   # ./gradlew test (all JVM tests)
-pixi run test-unit              # ./gradlew testDebugUnitTest
+pixi run test                   # ./gradlew testDebugUnitTest
 pixi run test-screenshot-record # ./gradlew recordPaparazziDebug (regenerate goldens)
 pixi run test-screenshot-verify # ./gradlew verifyPaparazziDebug (compare vs goldens)
 pixi run test-all               # unit tests + screenshot verify
 pixi run lint                   # ./gradlew lintDebug
+pixi run logs                   # logcat for the running release app
 ```
+
+Release builds are signed from a gitignored `keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) if present, else with the debug key. `app/src/debug/res/xml/shortcuts.xml` duplicates the main shortcuts with the `.debug` targetPackage; keep the two in sync.
 
 Do NOT run `./gradlew` directly — it will fail because the system JDK is incomplete. Always use `pixi run`.
 

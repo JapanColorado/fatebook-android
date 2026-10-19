@@ -39,7 +39,7 @@ An unofficial Android client for [Fatebook](https://fatebook.io), the prediction
 3. Get your API key at [fatebook.io/api-setup](https://fatebook.io/api-setup)
 4. Open the app → Settings → paste the key → Save & Connect
 
-## Development
+## Building
 
 ### Prerequisites
 
@@ -51,10 +51,11 @@ An unofficial Android client for [Fatebook](https://fatebook.io), the prediction
 
 ```bash
 pixi install           # Install JDK + Gradle via pixi
-pixi run build         # Build release APK
+pixi run build         # Build release APK (signed if keystore.properties exists, else debug-signed)
 pixi run install       # Build + install release APK on the connected device
 pixi run run           # Install + launch
-pixi run build-debug / install-debug / run-debug   # Debug variants
+pixi run build-debug / install-debug / run-debug   # Debug variants (dev.russell.fatebook.debug)
+pixi run logs          # Logcat for the running app
 ```
 
 > Do not run `./gradlew` directly — the system only has a JRE. pixi provides the full JDK.
@@ -62,8 +63,8 @@ pixi run build-debug / install-debug / run-debug   # Debug variants
 ### Testing
 
 ```bash
-pixi run test                   # All JVM tests
-pixi run test-unit              # Unit tests only
+pixi run test                   # JVM unit tests
+pixi run test-all               # Unit tests + screenshot verify
 pixi run test-screenshot-record # Regenerate Paparazzi golden images
 pixi run test-screenshot-verify # Verify against golden images
 pixi run lint                   # Lint checks
@@ -71,7 +72,7 @@ pixi run lint                   # Lint checks
 
 Unit tests use JUnit + MockK + Turbine + Truth. Screenshot tests use [Paparazzi](https://github.com/cashapp/paparazzi) to render Compose UI on JVM — no emulator needed.
 
-### Architecture
+## Architecture
 
 MVVM + Repository pattern, offline-first.
 
@@ -81,7 +82,7 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
                                                               ViewModels → Compose UI
 ```
 
-### Tech Stack
+## Tech Stack
 
 Kotlin, Jetpack Compose, Hilt, Retrofit + Moshi, Room, WorkManager, DataStore, EncryptedSharedPreferences
 

@@ -1,8 +1,6 @@
 package dev.russell.fatebook.notification
 
 import android.content.Context
-import androidx.work.ListenableWorker
-import androidx.work.WorkerParameters
 import com.google.common.truth.Truth.assertThat
 import dev.russell.fatebook.data.preferences.NotificationToggles
 import dev.russell.fatebook.data.preferences.UserPreferences
@@ -18,17 +16,14 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
 
-class ReminderWorkerTest {
+class ReminderTickTest {
 
     private val context = mockk<Context>(relaxed = true)
-    private val params = mockk<WorkerParameters>(relaxed = true) {
-        every { taskExecutor } returns mockk(relaxed = true)
-    }
     private val repository = mockk<QuestionRepository>(relaxed = true)
     private val notificationHelper = mockk<NotificationHelper>(relaxed = true)
     private val prefs = mockk<UserPreferences>(relaxed = true)
 
-    private lateinit var worker: ReminderWorker
+    private lateinit var tick: ReminderTick
 
     @Before
     fun setup() {
@@ -36,22 +31,21 @@ class ReminderWorkerTest {
         coEvery { repository.getResolvingSoon(any()) } returns emptyList()
         every { prefs.notificationToggles } returns flowOf(NotificationToggles())
         every { prefs.lastPredictionDateEpochMs } returns flowOf(0L)
-        worker = ReminderWorker(context, params, repository, notificationHelper, prefs) { /* no-op widget */ }
+        tick = ReminderTick(context, repository, notificationHelper, prefs) { /* no-op widget */ }
     }
 
     @Test
-    fun `doWork shows daily reminder when nothing predicted today`() = runTest {
-        val result = worker.doWork()
+    fun `tick shows daily reminder when nothing predicted today`() = runTest {
+        tick.run()
 
-        assertThat(result).isEqualTo(ListenableWorker.Result.success())
         coVerify { notificationHelper.showReminderNotification(any()) }
     }
 
     @Test
-    fun `doWork skips daily reminder when already predicted today`() = runTest {
+    fun `tick skips daily reminder when already predicted today`() = runTest {
         every { prefs.lastPredictionDateEpochMs } returns flowOf(System.currentTimeMillis())
 
-        worker.doWork()
+        tick.run()
 
         coVerify(exactly = 0) { notificationHelper.showReminderNotification(any()) }
     }
@@ -60,7 +54,7 @@ class ReminderWorkerTest {
     fun `daily reminder toggle off suppresses the reminder`() = runTest {
         every { prefs.notificationToggles } returns flowOf(NotificationToggles(dailyReminder = false))
 
-        worker.doWork()
+        tick.run()
 
         coVerify(exactly = 0) { notificationHelper.showReminderNotification(any()) }
     }
@@ -70,17 +64,17 @@ class ReminderWorkerTest {
         every { prefs.notificationToggles } returns flowOf(NotificationToggles(readyToResolve = false))
         coEvery { repository.getReadyToResolve() } returns listOf(TestData.question(id = "q1"))
 
-        worker.doWork()
+        tick.run()
 
         coVerify(exactly = 0) { notificationHelper.showReadyToResolveNotifications(any(), any()) }
     }
 
     @Test
-    fun `doWork shows resolving-soon digest when questions are due soon`() = runTest {
+    fun `tick shows resolving-soon digest when questions are due soon`() = runTest {
         val soon = listOf(TestData.question(id = "s1"))
         coEvery { repository.getResolvingSoon(ReminderPolicy.RESOLVING_SOON_DAYS) } returns soon
 
-        worker.doWork()
+        tick.run()
 
         coVerify { notificationHelper.showResolvingSoonNotification(any(), soon) }
     }
@@ -90,26 +84,26 @@ class ReminderWorkerTest {
         every { prefs.notificationToggles } returns flowOf(NotificationToggles(resolvingSoon = false))
         coEvery { repository.getResolvingSoon(any()) } returns listOf(TestData.question(id = "s1"))
 
-        worker.doWork()
+        tick.run()
 
         coVerify(exactly = 0) { notificationHelper.showResolvingSoonNotification(any(), any()) }
     }
 
     @Test
-    fun `doWork shows resolve notifications when questions are ready`() = runTest {
+    fun `tick shows resolve notifications when questions are ready`() = runTest {
         val ready = listOf(TestData.question(id = "q1"), TestData.question(id = "q2"))
         coEvery { repository.getReadyToResolve() } returns ready
 
-        worker.doWork()
+        tick.run()
 
         coVerify { notificationHelper.showReadyToResolveNotifications(any(), ready) }
     }
 
     @Test
-    fun `doWork does not show resolve notifications when none are ready`() = runTest {
+    fun `tick does not show resolve notifications when none are ready`() = runTest {
         coEvery { repository.getReadyToResolve() } returns emptyList()
 
-        worker.doWork()
+        tick.run()
 
         coVerify(exactly = 0) {
             notificationHelper.showReadyToResolveNotifications(any(), any())

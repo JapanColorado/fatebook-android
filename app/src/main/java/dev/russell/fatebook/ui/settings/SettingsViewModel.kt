@@ -28,6 +28,7 @@ data class SettingsUiState(
     val dailyReminderEnabled: Boolean = true,
     val readyToResolveEnabled: Boolean = true,
     val resolvingSoonEnabled: Boolean = true,
+    val exactAlarmsAllowed: Boolean = true,
 )
 
 @HiltViewModel
@@ -43,6 +44,7 @@ class SettingsViewModel @Inject constructor(
     private val _validationError = MutableStateFlow<String?>(null)
     private val _shouldRequestPermission = MutableStateFlow(false)
     private val _pendingNotificationEnable = MutableStateFlow(false)
+    private val _exactAlarmsAllowed = MutableStateFlow(reminderScheduler.canScheduleExact())
 
     val state: StateFlow<SettingsUiState> = combine(
         _apiKey,
@@ -54,6 +56,7 @@ class SettingsViewModel @Inject constructor(
         prefs.reminderMinute,
         _shouldRequestPermission,
         prefs.notificationToggles,
+        _exactAlarmsAllowed,
     ) { values ->
         val toggles = values[8] as NotificationToggles
         SettingsUiState(
@@ -68,8 +71,14 @@ class SettingsViewModel @Inject constructor(
             dailyReminderEnabled = toggles.dailyReminder,
             readyToResolveEnabled = toggles.readyToResolve,
             resolvingSoonEnabled = toggles.resolvingSoon,
+            exactAlarmsAllowed = values[9] as Boolean,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
+
+    /** The grant happens in system settings, so re-check on returning to the screen. */
+    fun refreshExactAlarmAccess() {
+        _exactAlarmsAllowed.value = reminderScheduler.canScheduleExact()
+    }
 
     fun setApiKey(key: String) {
         _apiKey.value = key

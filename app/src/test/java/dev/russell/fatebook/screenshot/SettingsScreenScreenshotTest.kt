@@ -87,6 +87,21 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
+    fun settingsScreen_exactAlarmsDenied() {
+        paparazzi.snapshot {
+            FatebookTheme(dynamicColor = false) {
+                SettingsScreenContent(
+                    state = SettingsUiState(
+                        apiKey = "abc123",
+                        notificationsEnabled = true,
+                        exactAlarmsAllowed = false,
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
     fun settingsScreen_dark() {
         paparazzi.snapshot {
             FatebookTheme(darkTheme = true, dynamicColor = false) {

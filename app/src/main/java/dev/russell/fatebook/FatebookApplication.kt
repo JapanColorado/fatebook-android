@@ -7,6 +7,10 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
 import dev.russell.fatebook.data.sync.SyncWorker
+import dev.russell.fatebook.notification.ReminderScheduler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -14,6 +18,9 @@ class FatebookApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    lateinit var reminderScheduler: ReminderScheduler
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -26,6 +33,7 @@ class FatebookApplication : Application(), Configuration.Provider {
         // Drain any mutations queued in a previous session. The worker has a
         // NetworkType.CONNECTED constraint, so it'll just wait if offline.
         SyncWorker.enqueue(this)
+        CoroutineScope(Dispatchers.IO).launch { reminderScheduler.ensureArmed() }
     }
 
     private fun createNotificationChannels() {

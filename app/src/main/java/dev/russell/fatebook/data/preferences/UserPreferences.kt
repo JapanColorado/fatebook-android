@@ -22,7 +22,7 @@ import javax.inject.Singleton
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-/** Which of the daily-tick notification kinds the user wants; see ReminderWorker. */
+/** Which of the daily-tick notification kinds the user wants; see ReminderTick. */
 data class NotificationToggles(
     val dailyReminder: Boolean = true,
     val readyToResolve: Boolean = true,

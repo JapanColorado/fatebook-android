@@ -2,6 +2,8 @@ package dev.russell.fatebook.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.russell.fatebook.ui.components.ReminderTimeDialog
 import dev.russell.fatebook.ui.components.rememberNotificationPermissionRequester
@@ -58,6 +62,10 @@ fun SettingsScreen(
 
     LaunchedEffect(state.shouldRequestNotificationPermission) {
         if (state.shouldRequestNotificationPermission) requestNotificationPermission()
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refreshExactAlarmAccess()
     }
 
     LaunchedEffect(state.validationResult) {
@@ -81,6 +89,16 @@ fun SettingsScreen(
                 Intent(Intent.ACTION_VIEW, Uri.parse("https://fatebook.io/api-setup"))
             )
         },
+        onAllowExactAlarmsClick = {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.startActivity(
+                    Intent(
+                        Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                        Uri.parse("package:${context.packageName}"),
+                    )
+                )
+            }
+        },
         onPrivacyPolicyClick = {
             context.startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse("https://japancolorado.github.io/FatebookApp/privacy-policy"))
@@ -102,6 +120,7 @@ fun SettingsScreenContent(
     onReadyToResolveEnabledChanged: (Boolean) -> Unit = {},
     onResolvingSoonEnabledChanged: (Boolean) -> Unit = {},
     onGetApiKeyClick: () -> Unit = {},
+    onAllowExactAlarmsClick: () -> Unit = {},
     onPrivacyPolicyClick: () -> Unit = {},
 ) {
     Scaffold(
@@ -186,6 +205,17 @@ fun SettingsScreenContent(
                     Text(
                         "Notification time: %02d:%02d".format(state.reminderHour, state.reminderMinute)
                     )
+                }
+
+                if (!state.exactAlarmsAllowed) {
+                    Text(
+                        "Notifications may arrive late until you allow alarms & reminders.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = onAllowExactAlarmsClick) {
+                        Text("Allow alarms & reminders")
+                    }
                 }
 
                 SwitchRow(

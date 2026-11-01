@@ -133,6 +133,8 @@ dependencies {
 
     // Compose UI tests (instrumented)
     androidTestImplementation(libs.compose.ui.test.junit4)
+    // The 3.5.0 that Compose test pulls in crashes on Android 17 (no InputManager.getInstance).
+    androidTestImplementation(libs.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
     debugImplementation(libs.compose.ui.test.manifest)
 }

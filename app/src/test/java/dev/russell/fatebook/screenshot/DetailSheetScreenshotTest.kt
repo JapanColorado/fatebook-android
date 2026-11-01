@@ -138,7 +138,7 @@ class DetailSheetScreenshotTest {
                 question = activeExclusiveMc,
                 state = DetailSheetState(
                     question = activeExclusiveMc,
-                    pieValues = listOf(0.55f, 0.3f, 0.15f),
+                    optionDrafts = mapOf("o1" to 55, "o2" to 30, "o3" to 15),
                 ),
             )
         }
@@ -170,15 +170,53 @@ class DetailSheetScreenshotTest {
     }
 
     @Test
-    fun detail_activeNonExclusiveMc_expanded() {
-        val question = activeExclusiveMc.copy(exclusiveAnswers = false)
+    fun detail_activeExclusiveMc_leftForOtherAndUnset_dark() {
+        // Flutter was 30: the row shows the change. React Native has no forecast yet.
+        val question = activeExclusiveMc.copy(
+            options = activeExclusiveMc.options.map { option ->
+                if (option.id == "o3") option.copy(latestForecast = null) else option
+            },
+        )
         paparazzi.snapshot {
             DetailContentTestHost(
                 question = question,
                 state = DetailSheetState(
                     question = question,
-                    expandedOptionId = "o2",
-                    optionSliderValue = 0.3f,
+                    optionDrafts = mapOf("o1" to 55, "o2" to 20),
+                ),
+                darkTheme = true,
+            )
+        }
+    }
+
+    @Test
+    fun detail_activeExclusiveMc_overAllocated() {
+        paparazzi.snapshot {
+            DetailContentTestHost(
+                question = activeExclusiveMc,
+                state = DetailSheetState(
+                    question = activeExclusiveMc,
+                    optionDrafts = mapOf("o1" to 67, "o2" to 30, "o3" to 15),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun detail_activeNonExclusiveMc() {
+        // Independent options: no tally, and they can total more than 100%.
+        val question = activeExclusiveMc.copy(
+            exclusiveAnswers = false,
+            options = activeExclusiveMc.options.map { option ->
+                if (option.id == "o3") option.copy(resolution = Resolution.NO) else option
+            },
+        )
+        paparazzi.snapshot {
+            DetailContentTestHost(
+                question = question,
+                state = DetailSheetState(
+                    question = question,
+                    optionDrafts = mapOf("o1" to 80, "o2" to 60),
                 ),
             )
         }

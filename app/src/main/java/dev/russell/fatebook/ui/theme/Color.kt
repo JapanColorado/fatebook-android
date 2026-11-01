@@ -86,7 +86,7 @@ val ResolveAmbiguous: Color
     get() = Ledger.colors.neutral
 
 // Multiple-choice option colours — earthy mid-tones that sit on paper and ink
-// alike; cycled by option index in the pie chart and option rows.
+// alike; cycled by option index in stacked option bars.
 private val McOptionPalette = listOf(
     Color(0xFF3F5FA8), // ultramarine
     Color(0xFFC98A1B), // ochre

@@ -46,6 +46,7 @@ import kotlin.math.roundToInt
 private val QUICK_SET = listOf(10, 25, 50, 75, 90)
 private const val MIN = 0.01f
 private const val MAX = 0.99f
+private const val DISABLED_ALPHA = 0.38f
 
 /**
  * The forecast control: a large readout with a plain-language gloss, ±1 bit of
@@ -97,15 +98,25 @@ fun ProbabilitySlider(
     }
 }
 
-/** ±1 bit: a square key rather than a tonal pill, labelled with its unit. */
+/**
+ * ±1 bit: a square key rather than a tonal pill, labelled with its unit. [compact]
+ * is the small key for option rows, which drops the unit to fit beside a ruler.
+ */
 @Composable
-private fun BitButton(label: String, description: String, onClick: () -> Unit) {
+internal fun BitButton(
+    label: String,
+    description: String,
+    compact: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
     val haptics = LocalHapticFeedback.current
+    val alpha = if (enabled) 1f else DISABLED_ALPHA
     Column(
         modifier = Modifier
-            .size(56.dp)
-            .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.small)
-            .clickable(role = Role.Button) {
+            .size(if (compact) 44.dp else 56.dp)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = alpha), MaterialTheme.shapes.small)
+            .clickable(enabled = enabled, role = Role.Button) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             }
@@ -116,21 +127,29 @@ private fun BitButton(label: String, description: String, onClick: () -> Unit) {
         Text(
             text = label,
             style = MaterialTheme.typography.titleSmall.copy(fontFamily = MaterialTheme.typography.labelMedium.fontFamily),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
         )
-        Text(
-            text = "BIT",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (!compact) {
+            Text(
+                text = "BIT",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
+/**
+ * The ruler itself: the scale, its ticks and a needle you tap or drag, in
+ * whole-percent steps. A null [value] draws no needle (no forecast yet), and the
+ * first touch sets one. [label] names what's being set for screen readers.
+ */
 @Composable
-private fun Ruler(
-    value: Float,
+internal fun ProbabilityRuler(
+    value: Float?,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    label: String = "Probability",
 ) {
     val haptics = LocalHapticFeedback.current
     val currentValue by rememberUpdatedState(value)
@@ -138,63 +157,62 @@ private fun Ruler(
     val colors = Ledger.colors
     val tickColor = MaterialTheme.colorScheme.onSurfaceVariant
     val needleColor = MaterialTheme.colorScheme.onSurface
-    val pct = (value * 100).roundToInt()
+    val pct = value?.let { (it * 100).roundToInt() }
+    val spoken = pct?.let { "$it percent" } ?: "no forecast"
 
     // Whole-percent steps, with a light tick each time a 5% mark is crossed.
     fun set(fraction: Float) {
         val snapped = ((fraction * 100).roundToInt() / 100f).coerceIn(MIN, MAX)
-        val previous = (currentValue * 100).roundToInt()
+        val previous = currentValue?.let { (it * 100).roundToInt() }
         val next = (snapped * 100).roundToInt()
         if (next != previous) {
-            if (next / 5 != previous / 5) {
+            if (previous == null || next / 5 != previous / 5) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             }
             currentOnChange(snapped)
         }
     }
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .semantics {
-                    contentDescription = "Probability: $pct percent"
-                    stateDescription = "$pct percent"
-                    progressBarRangeInfo = ProgressBarRangeInfo(value, MIN..MAX, steps = 97)
-                    setProgress { target ->
-                        currentOnChange(target.coerceIn(MIN, MAX))
-                        true
-                    }
+    Canvas(
+        modifier = modifier
+            .semantics {
+                contentDescription = "$label: $spoken"
+                stateDescription = spoken
+                progressBarRangeInfo = ProgressBarRangeInfo(value ?: MIN, MIN..MAX, steps = 97)
+                setProgress { target ->
+                    currentOnChange(target.coerceIn(MIN, MAX))
+                    true
                 }
-                .pointerInput(Unit) {
-                    detectTapGestures { set(it.x / size.width) }
-                }
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures { change, _ ->
-                        change.consume()
-                        set(change.position.x / size.width)
-                    }
-                },
-        ) {
-            val base = size.height - 6.dp.toPx()
-            val gradientHeight = 3.dp.toPx()
-            drawRect(
-                brush = Brush.horizontalGradient(listOf(colors.no, colors.neutral, colors.yes)),
-                topLeft = Offset(0f, base),
-                size = Size(size.width, gradientHeight),
-            )
-            for (i in 0..100 step 5) {
-                val x = size.width * i / 100f
-                val major = i % 25 == 0
-                val tick = if (major) 14.dp.toPx() else 7.dp.toPx()
-                drawLine(
-                    color = tickColor.copy(alpha = if (major) 1f else 0.55f),
-                    start = Offset(x.coerceIn(0.5f, size.width - 0.5f), base),
-                    end = Offset(x.coerceIn(0.5f, size.width - 0.5f), base - tick),
-                    strokeWidth = 1.dp.toPx(),
-                )
             }
+            .pointerInput(Unit) {
+                detectTapGestures { set(it.x / size.width) }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, _ ->
+                    change.consume()
+                    set(change.position.x / size.width)
+                }
+            },
+    ) {
+        val base = size.height - 6.dp.toPx()
+        val gradientHeight = 3.dp.toPx()
+        drawRect(
+            brush = Brush.horizontalGradient(listOf(colors.no, colors.neutral, colors.yes)),
+            topLeft = Offset(0f, base),
+            size = Size(size.width, gradientHeight),
+        )
+        for (i in 0..100 step 5) {
+            val x = size.width * i / 100f
+            val major = i % 25 == 0
+            val tick = if (major) 14.dp.toPx() else 7.dp.toPx()
+            drawLine(
+                color = tickColor.copy(alpha = if (major) 1f else 0.55f),
+                start = Offset(x.coerceIn(0.5f, size.width - 0.5f), base),
+                end = Offset(x.coerceIn(0.5f, size.width - 0.5f), base - tick),
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
+        if (value != null) {
             val x = size.width * value
             drawRect(
                 color = needleColor,
@@ -202,6 +220,27 @@ private fun Ruler(
                 size = Size(3.dp.toPx(), size.height - 2.dp.toPx()),
             )
         }
+    }
+}
+
+/** The ruler with its quick-set figures, as the full-size slider shows it. */
+@Composable
+private fun Ruler(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val pct = (value * 100).roundToInt()
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        ProbabilityRuler(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+        )
 
         // Quick-set figures, placed under their ticks.
         BoxWithConstraints(

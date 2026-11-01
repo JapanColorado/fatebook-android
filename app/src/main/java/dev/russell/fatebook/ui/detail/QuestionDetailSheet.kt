@@ -29,8 +29,6 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -74,11 +72,9 @@ import dev.russell.fatebook.ui.components.LedgerAction
 import dev.russell.fatebook.ui.components.LedgerMargin
 import dev.russell.fatebook.ui.components.LedgerRule
 import dev.russell.fatebook.ui.components.LedgerSection
+import dev.russell.fatebook.ui.components.OptionForecastMath
 import dev.russell.fatebook.ui.components.OutcomeStamp
-import dev.russell.fatebook.ui.components.PieChartMath
-import dev.russell.fatebook.ui.components.PieSegment
 import dev.russell.fatebook.ui.components.ProbabilityBar
-import dev.russell.fatebook.ui.components.ProbabilityPieChart
 import dev.russell.fatebook.ui.components.ProbabilitySlider
 import dev.russell.fatebook.ui.components.SectionGap
 import dev.russell.fatebook.ui.components.SectionLabel
@@ -90,7 +86,6 @@ import dev.russell.fatebook.ui.theme.ResolveAmbiguous
 import dev.russell.fatebook.ui.theme.ResolveNo
 import dev.russell.fatebook.ui.theme.ResolveYes
 import dev.russell.fatebook.ui.theme.forecastColor
-import dev.russell.fatebook.ui.theme.mcOptionColor
 import java.time.Instant
 import java.time.LocalDate
 import java.time.Period
@@ -106,11 +101,9 @@ import kotlin.math.roundToInt
  */
 @Immutable
 data class McActions(
-    val onToggleOptionExpanded: (String) -> Unit = {},
-    val onOptionSliderChange: (Float) -> Unit = {},
-    val onUpdateOptionForecast: () -> Unit = {},
-    val onPieValuesChange: (List<Float>) -> Unit = {},
-    val onUpdatePieForecasts: () -> Unit = {},
+    val onOptionDraftChange: (optionId: String, percent: Int) -> Unit = { _, _ -> },
+    val onBalanceOptionDrafts: () -> Unit = {},
+    val onUpdateOptionForecasts: () -> Unit = {},
     val onResolveExclusive: (String) -> Unit = {},
     val onResolveOption: (optionId: String, resolvedYes: Boolean) -> Unit = { _, _ -> },
 )
@@ -430,7 +423,7 @@ private fun ColumnScope.ReadModeContent(
 
     // Forecast history — only interesting when someone besides you has
     // forecast (shared questions). Server-scrubbed hidden forecasts arrive
-    // with a null value and are skipped. Remembered because slider/pie drags
+    // with a null value and are skipped. Remembered because slider drags
     // recompose this content every frame.
     val visibleHistory = remember(detailState.forecastHistory) {
         detailState.forecastHistory.filter { it.forecast != null }
@@ -705,11 +698,8 @@ private fun ActionRow(
 /**
  * Option list for multiple-choice questions.
  *
- * Active exclusive question: an interactive pie chart — dragging a boundary
- * between two slices transfers probability between them, so the options
- * always sum to 100%; one button submits all changed options.
- * Active non-exclusive question: each unresolved option row is tappable and
- * expands a probability slider for forecasting that option (one at a time).
+ * Open for forecasting: [OptionForecastEditor], with one button that submits
+ * every changed option; an exclusive question over 100% must be fixed first.
  * Ready to resolve: exclusive questions get one resolve button per option plus
  * Other/Ambiguous; non-exclusive questions get YES/NO buttons per option.
  */
@@ -721,12 +711,22 @@ private fun MultipleChoiceSection(
 ) {
     LedgerSection(title = "Options") {
         Column {
-            if (question.isPieEditable && detailState.pieValues.size == question.options.size) {
-                PieForecastEditor(
-                    question = question,
-                    detailState = detailState,
-                    onPieValuesChange = actions.onPieValuesChange,
-                    onUpdatePieForecasts = actions.onUpdatePieForecasts,
+            if (question.hasOptionForecastEditor) {
+                val drafts = detailState.optionDrafts
+                OptionForecastEditor(
+                    options = question.options,
+                    drafts = drafts,
+                    exclusive = question.exclusiveAnswers,
+                    onDraftChange = actions.onOptionDraftChange,
+                    onBalance = actions.onBalanceOptionDrafts,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                val withinTotal = !question.exclusiveAnswers || OptionForecastMath.overBy(drafts) == 0
+                SubmittingButton(
+                    label = "Update Forecasts",
+                    submitting = detailState.isUpdatingForecast,
+                    enabled = withinTotal && OptionForecastMath.changes(question.options, drafts).isNotEmpty(),
+                    onClick = actions.onUpdateOptionForecasts,
                 )
             } else {
                 OptionRows(question, detailState, actions)
@@ -784,23 +784,13 @@ private fun OptionRows(
     detailState: DetailSheetState,
     actions: McActions,
 ) {
-    val canForecast = !question.resolved && !question.isForecastHidden
     val showResolveButtons = question.isReadyToResolve
 
     question.options.forEachIndexed { i, option ->
         if (i > 0) LedgerRule()
-        val expanded = detailState.expandedOptionId == option.id
-        val expandable = canForecast && !showResolveButtons && option.resolution == null
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(
-                    if (expandable) {
-                        Modifier.clickable { actions.onToggleOptionExpanded(option.id) }
-                    } else {
-                        Modifier
-                    },
-                )
                 .padding(vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -815,16 +805,6 @@ private fun OptionRows(
                     modifier = Modifier.weight(1f),
                 )
                 OptionTrailing(question, option, detailState, actions, showResolveButtons)
-                if (expandable) {
-                    Icon(
-                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .padding(start = 4.dp)
-                            .size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
             val forecast = option.latestForecast
             if (forecast != null && !question.isForecastHidden) {
@@ -833,20 +813,6 @@ private fun OptionRows(
                     height = 3.dp,
                 )
             }
-        }
-
-        if (expanded && canForecast && !showResolveButtons) {
-            ProbabilitySlider(
-                value = detailState.optionSliderValue,
-                onValueChange = actions.onOptionSliderChange,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            SubmittingButton(
-                label = "Update Forecast",
-                submitting = detailState.isUpdatingForecast,
-                onClick = actions.onUpdateOptionForecast,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }
@@ -861,18 +827,7 @@ private fun OptionTrailing(
     showResolveButtons: Boolean,
 ) {
     when {
-        option.resolution != null -> {
-            val (label, color) = when (option.resolution) {
-                Resolution.YES -> "YES" to ResolveYes
-                Resolution.NO -> "NO" to ResolveNo
-                Resolution.AMBIGUOUS -> "N/A" to ResolveAmbiguous
-            }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = color,
-            )
-        }
+        option.resolution != null -> OptionOutcome(option.resolution)
         showResolveButtons && !question.exclusiveAnswers -> {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LedgerAction(
@@ -907,71 +862,18 @@ private fun OptionTrailing(
     }
 }
 
-/**
- * Interactive pie editor for an active exclusive multiple-choice question.
- * Legend rows show each option with its live percent; a single button
- * submits every option whose value changed.
- */
+/** How one option of a question resolved. */
 @Composable
-private fun PieForecastEditor(
-    question: Question,
-    detailState: DetailSheetState,
-    onPieValuesChange: (List<Float>) -> Unit,
-    onUpdatePieForecasts: () -> Unit,
-) {
-    val percents = PieChartMath.displayPercents(detailState.pieValues)
-
-    ProbabilityPieChart(
-        segments = question.options.mapIndexed { i, option ->
-            PieSegment(id = option.id, label = option.text, value = detailState.pieValues[i])
-        },
-        onValuesChange = onPieValuesChange,
-        enabled = !detailState.isUpdatingForecast,
-    )
-    Spacer(modifier = Modifier.height(12.dp))
-
-    question.options.forEachIndexed { i, option ->
-        LedgerRule()
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(mcOptionColor(i), MaterialTheme.shapes.extraSmall),
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = option.text,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // Ink rather than the slice colour: the swatch identifies the option,
-            // and not every slice colour is legible as small text.
-            Text(
-                text = "${percents[i]}%",
-                style = monoFigure(),
-            )
-        }
+internal fun OptionOutcome(resolution: Resolution) {
+    val (label, color) = when (resolution) {
+        Resolution.YES -> "YES" to ResolveYes
+        Resolution.NO -> "NO" to ResolveNo
+        Resolution.AMBIGUOUS -> "N/A" to ResolveAmbiguous
     }
-    LedgerRule()
-
-    Spacer(modifier = Modifier.height(8.dp))
     Text(
-        text = "Drag the handles between slices to adjust — options always total 100%.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Spacer(modifier = Modifier.height(12.dp))
-    SubmittingButton(
-        label = "Update Forecasts",
-        submitting = detailState.isUpdatingForecast,
-        onClick = onUpdatePieForecasts,
+        text = label,
+        style = MaterialTheme.typography.labelMedium,
+        color = color,
     )
 }
 
@@ -981,13 +883,14 @@ private fun SubmittingButton(
     label: String,
     submitting: Boolean,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
     Button(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .height(52.dp),
-        enabled = !submitting,
+        enabled = enabled && !submitting,
         shape = MaterialTheme.shapes.medium,
     ) {
         if (submitting) {
@@ -1229,7 +1132,7 @@ private fun CommentItem(comment: Comment, dateFormatter: DateTimeFormatter) {
 
 /** Figures in rows: the mono label face at reading size, without label tracking. */
 @Composable
-private fun monoFigure() = MaterialTheme.typography.labelMedium.copy(
+internal fun monoFigure() = MaterialTheme.typography.labelMedium.copy(
     fontSize = MaterialTheme.typography.bodyMedium.fontSize,
     letterSpacing = MaterialTheme.typography.bodyMedium.letterSpacing,
 )

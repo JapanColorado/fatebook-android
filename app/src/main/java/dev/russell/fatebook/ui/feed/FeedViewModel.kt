@@ -15,7 +15,7 @@ import dev.russell.fatebook.domain.model.Question
 import dev.russell.fatebook.domain.model.Visibility
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.di.DefaultDispatcher
-import dev.russell.fatebook.ui.components.PieChartMath
+import dev.russell.fatebook.ui.components.OptionForecastMath
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -42,7 +42,6 @@ import retrofit2.HttpException
 import java.io.IOException
 import java.time.LocalDate
 import javax.inject.Inject
-import kotlin.math.roundToInt
 
 enum class FeedFilter {
     ACTIVE,
@@ -84,14 +83,9 @@ data class DetailSheetState(
     val question: Question? = null,
     val forecastSliderValue: Float = 0.5f,
     val isUpdatingForecast: Boolean = false,
-    // Multiple choice (non-exclusive): which option row is expanded for
-    // forecasting, if any.
-    val expandedOptionId: String? = null,
-    val optionSliderValue: Float = 0.5f,
-    // Multiple choice (exclusive): pie-editor fractions aligned with
-    // question.options, always summing to 1. Empty when the pie editor
-    // doesn't apply (non-MC, non-exclusive, resolved, ...).
-    val pieValues: List<Float> = emptyList(),
+    // Multiple choice: the option editor's whole percents by option id. An option
+    // with no entry has no forecast yet. Empty when the editor doesn't apply.
+    val optionDrafts: Map<String, Int> = emptyMap(),
     val isEditing: Boolean = false,
     val editTitle: String = "",
     val editResolveBy: LocalDate? = null,
@@ -344,10 +338,10 @@ class FeedViewModel @Inject constructor(
             question = question,
             currentUserId = prefs.userId,
             forecastSliderValue = question.yourLatestForecast?.toFloat() ?: 0.5f,
-            pieValues = if (question.isPieEditable) {
-                PieChartMath.initialValues(question.options.map { it.latestForecast })
+            optionDrafts = if (question.hasOptionForecastEditor) {
+                OptionForecastMath.initialDrafts(question.options)
             } else {
-                emptyList()
+                emptyMap()
             },
         )
         viewModelScope.launch {
@@ -591,60 +585,30 @@ class FeedViewModel @Inject constructor(
 
     // --- Multiple choice ---
 
-    fun toggleOptionExpanded(optionId: String) {
-        _detail.update { state ->
-            if (state.expandedOptionId == optionId) {
-                state.copy(expandedOptionId = null)
-            } else {
-                val current = state.question?.options
-                    ?.firstOrNull { it.id == optionId }
-                    ?.latestForecast
-                state.copy(
-                    expandedOptionId = optionId,
-                    optionSliderValue = current?.toFloat() ?: 0.5f,
-                )
-            }
-        }
+    fun setOptionDraft(optionId: String, percent: Int) {
+        _detail.update { it.copy(optionDrafts = it.optionDrafts + (optionId to percent)) }
     }
 
-    fun setOptionSliderValue(value: Float) {
-        _detail.update { it.copy(optionSliderValue = value) }
-    }
-
-    fun updateOptionForecast() {
-        val state = _detail.value
-        val optionId = state.expandedOptionId ?: return
-        detailMutation(
-            "Failed to update forecast",
-            { s, loading -> s.copy(isUpdatingForecast = loading) },
-        ) { question ->
-            repository.addForecast(question.id, state.optionSliderValue.toDouble(), optionId)
-        }
-    }
-
-    /** New pie-editor fractions from a drag; aligned with question.options. */
-    fun setPieValues(values: List<Float>) {
-        _detail.update { it.copy(pieValues = values) }
+    /** Scale an over-allocated exclusive question's drafts down to 100%. */
+    fun balanceOptionDrafts() {
+        _detail.update { it.copy(optionDrafts = OptionForecastMath.balance(it.optionDrafts)) }
     }
 
     /**
-     * Submit the pie editor's values: one forecast per option whose value
-     * changed (as a whole percent) from its current latest forecast, so
-     * untouched options don't get duplicate forecasts.
+     * Submit the option editor: one forecast per option whose whole percent
+     * changed, so untouched options don't get duplicate forecasts. An exclusive
+     * question over 100% has to be brought back within it first.
      */
-    fun updatePieForecasts() {
+    fun updateOptionForecasts() {
         val state = _detail.value
         val question = state.question ?: return
-        if (state.pieValues.size != question.options.size) return
+        if (question.exclusiveAnswers && OptionForecastMath.overBy(state.optionDrafts) > 0) return
         detailMutation(
             "Failed to update forecasts",
             { s, loading -> s.copy(isUpdatingForecast = loading) },
         ) {
-            question.options.zip(state.pieValues).forEach { (option, value) ->
-                val rounded = (value * 100).roundToInt() / 100.0
-                if (PieChartMath.differsAsPercent(option.latestForecast, rounded)) {
-                    repository.addForecast(question.id, rounded, option.id)
-                }
+            OptionForecastMath.changes(question.options, state.optionDrafts).forEach { (option, percent) ->
+                repository.addForecast(question.id, percent / 100.0, option.id)
             }
         }
     }

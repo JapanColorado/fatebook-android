@@ -797,67 +797,22 @@ class FeedViewModelTest {
     )
 
     @Test
-    fun `toggleOptionExpanded seeds slider with the option's current forecast`() = runTest {
+    fun `showDetailSheet seeds drafts only for options that have a forecast`() = runTest {
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             vm.uiState.collect {}
         }
         advanceUntilIdle()
 
-        vm.showDetailSheet(mcQuestion())
-        advanceUntilIdle()
-        vm.toggleOptionExpanded("optA")
-        advanceUntilIdle()
-
-        assertThat(vm.detail.value.expandedOptionId).isEqualTo("optA")
-        assertThat(vm.detail.value.optionSliderValue).isEqualTo(0.4f)
-
-        // Tapping again collapses.
-        vm.toggleOptionExpanded("optA")
-        advanceUntilIdle()
-        assertThat(vm.detail.value.expandedOptionId).isNull()
-    }
-
-    @Test
-    fun `updateOptionForecast forwards optionId to the repository and closes sheet`() = runTest {
-        val vm = createViewModel()
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            vm.uiState.collect {}
-        }
-        advanceUntilIdle()
-
-        vm.showDetailSheet(mcQuestion())
-        advanceUntilIdle()
-        vm.toggleOptionExpanded("optB")
-        vm.setOptionSliderValue(0.75f)
-        advanceUntilIdle()
-        vm.updateOptionForecast()
-        advanceUntilIdle()
-
-        coVerify { repository.addForecast("mc1", 0.75, "optB") }
-        assertThat(vm.detail.value.question).isNull()
-    }
-
-    @Test
-    fun `showDetailSheet seeds pie values for an active exclusive MC question`() = runTest {
-        val vm = createViewModel()
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            vm.uiState.collect {}
-        }
-        advanceUntilIdle()
-
-        // optA has 0.4 forecast; optB is unforecast and absorbs the leftover.
+        // optA has a 0.4 forecast; optB has none and stays unset.
         vm.showDetailSheet(mcQuestion())
         advanceUntilIdle()
 
-        val pie = vm.detail.value.pieValues
-        assertThat(pie).hasSize(2)
-        assertThat(pie[0]).isWithin(0.001f).of(0.4f)
-        assertThat(pie[1]).isWithin(0.001f).of(0.6f)
+        assertThat(vm.detail.value.optionDrafts).containsExactly("optA", 40)
     }
 
     @Test
-    fun `showDetailSheet leaves pie values empty for non-exclusive MC`() = runTest {
+    fun `showDetailSheet seeds drafts for non-exclusive MC too`() = runTest {
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             vm.uiState.collect {}
@@ -867,34 +822,11 @@ class FeedViewModelTest {
         vm.showDetailSheet(mcQuestion().copy(exclusiveAnswers = false))
         advanceUntilIdle()
 
-        assertThat(vm.detail.value.pieValues).isEmpty()
+        assertThat(vm.detail.value.optionDrafts).containsExactly("optA", 40)
     }
 
     @Test
-    fun `updatePieForecasts submits only options whose percent changed`() = runTest {
-        val vm = createViewModel()
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            vm.uiState.collect {}
-        }
-        advanceUntilIdle()
-
-        vm.showDetailSheet(mcQuestion())
-        advanceUntilIdle()
-        // optA stays at its current 40%; optB moves from (implied) 60% to 60%
-        // — then shift 10 points from A to B so both change.
-        vm.setPieValues(listOf(0.3f, 0.7f))
-        advanceUntilIdle()
-        vm.updatePieForecasts()
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { repository.addForecast("mc1", 0.3, "optA") }
-        // optB had no forecast at all, so it's always submitted.
-        coVerify(exactly = 1) { repository.addForecast("mc1", 0.7, "optB") }
-        assertThat(vm.detail.value.question).isNull()
-    }
-
-    @Test
-    fun `updatePieForecasts skips options unchanged as a whole percent`() = runTest {
+    fun `updateOptionForecasts submits only options whose percent changed`() = runTest {
         val vm = createViewModel()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             vm.uiState.collect {}
@@ -904,16 +836,66 @@ class FeedViewModelTest {
         val question = mcQuestion().copy(
             options = listOf(
                 TestData.questionOption(id = "optA", text = "Alpha", latestForecast = 0.4),
-                TestData.questionOption(id = "optB", text = "Beta", latestForecast = 0.6),
+                TestData.questionOption(id = "optB", text = "Beta", latestForecast = 0.3),
+                TestData.questionOption(id = "optC", text = "Gamma", latestForecast = null),
             ),
         )
         vm.showDetailSheet(question)
         advanceUntilIdle()
-        vm.updatePieForecasts()
+        vm.setOptionDraft("optB", 45)
+        vm.updateOptionForecasts()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.addForecast("mc1", 0.45, "optB") }
+        // optA is untouched and optC was never set, so neither gets a forecast.
+        coVerify(exactly = 1) { repository.addForecast(any(), any(), any()) }
+        assertThat(vm.detail.value.question).isNull()
+    }
+
+    @Test
+    fun `updateOptionForecasts skips an over-allocated exclusive question until balanced`() = runTest {
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(mcQuestion())
+        advanceUntilIdle()
+        vm.setOptionDraft("optA", 70)
+        vm.setOptionDraft("optB", 70)
+
+        vm.updateOptionForecasts()
         advanceUntilIdle()
 
         coVerify(exactly = 0) { repository.addForecast(any(), any(), any()) }
-        assertThat(vm.detail.value.question).isNull()
+        assertThat(vm.detail.value.question).isNotNull()
+
+        vm.balanceOptionDrafts()
+        vm.updateOptionForecasts()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.addForecast("mc1", 0.5, "optA") }
+        coVerify(exactly = 1) { repository.addForecast("mc1", 0.5, "optB") }
+    }
+
+    @Test
+    fun `updateOptionForecasts lets non-exclusive options exceed 100 percent`() = runTest {
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.uiState.collect {}
+        }
+        advanceUntilIdle()
+
+        vm.showDetailSheet(mcQuestion().copy(exclusiveAnswers = false))
+        advanceUntilIdle()
+        vm.setOptionDraft("optA", 70)
+        vm.setOptionDraft("optB", 70)
+        vm.updateOptionForecasts()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.addForecast("mc1", 0.7, "optA") }
+        coVerify(exactly = 1) { repository.addForecast("mc1", 0.7, "optB") }
     }
 
     @Test

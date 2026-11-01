@@ -14,8 +14,6 @@ import dev.russell.fatebook.testutil.TestData
 import dev.russell.fatebook.ui.components.ErrorBanner
 import dev.russell.fatebook.ui.components.ForecastSparkline
 import dev.russell.fatebook.ui.components.OfflineBanner
-import dev.russell.fatebook.ui.components.PieSegment
-import dev.russell.fatebook.ui.components.ProbabilityPieChart
 import dev.russell.fatebook.ui.components.ProbabilitySlider
 import dev.russell.fatebook.ui.components.QuestionCard
 import dev.russell.fatebook.ui.components.ShimmerQuestionCard
@@ -416,61 +414,6 @@ class ComponentScreenshotTest {
         paparazzi.snapshot {
             FatebookTheme(darkTheme = false) {
                 ProbabilitySlider(value = 0.90f, onValueChange = {})
-            }
-        }
-    }
-
-    // --- ProbabilityPieChart ---
-
-    @Test
-    fun probabilityPieChart_evenThreeWay() {
-        paparazzi.snapshot {
-            FatebookTheme(darkTheme = false) {
-                ProbabilityPieChart(
-                    segments = listOf(
-                        PieSegment("o1", "Compose", 1f / 3f),
-                        PieSegment("o2", "Flutter", 1f / 3f),
-                        PieSegment("o3", "React Native", 1f / 3f),
-                    ),
-                    onValuesChange = {},
-                )
-            }
-        }
-    }
-
-    @Test
-    fun probabilityPieChart_unevenFiveWay() {
-        paparazzi.snapshot {
-            FatebookTheme(darkTheme = false) {
-                ProbabilityPieChart(
-                    segments = listOf(
-                        PieSegment("o1", "Politics", 0.50f),
-                        PieSegment("o2", "Operations", 0.14f),
-                        PieSegment("o3", "Engineering", 0.19f),
-                        PieSegment("o4", "Research", 0.10f),
-                        PieSegment("o5", "Other", 0.07f),
-                    ),
-                    onValuesChange = {},
-                )
-            }
-        }
-    }
-
-    @Test
-    fun probabilityPieChart_tinySlice_dark() {
-        paparazzi.snapshot {
-            FatebookTheme(darkTheme = true) {
-                // The ring's hole is surface-coloured, so it needs a surface behind it.
-                androidx.compose.material3.Surface {
-                    ProbabilityPieChart(
-                        segments = listOf(
-                            PieSegment("o1", "Yes, easily", 0.79f),
-                            PieSegment("o2", "Barely", 0.19f),
-                            PieSegment("o3", "No", 0.02f),
-                        ),
-                        onValuesChange = {},
-                    )
-                }
             }
         }
     }

@@ -95,16 +95,10 @@ data class Question(
     val winningOption: QuestionOption?
         get() = options.firstOrNull { it.resolution == Resolution.YES }
 
-    /**
-     * Exclusive multiple-choice questions that are still open for forecasting use
-     * the interactive pie editor (options must sum to 100%). Non-exclusive MC
-     * options are independent probabilities, so they keep per-option sliders.
-     */
-    val isPieEditable: Boolean
+    /** Multiple-choice questions still open for forecasting use the option editor. */
+    val hasOptionForecastEditor: Boolean
         get() = type == QuestionType.MULTIPLE_CHOICE &&
-            exclusiveAnswers &&
-            options.size >= 2 &&
-            options.all { it.resolution == null } &&
+            options.isNotEmpty() &&
             !resolved && !isReadyToResolve && !isForecastHidden
 }
 

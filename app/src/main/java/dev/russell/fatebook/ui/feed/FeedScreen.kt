@@ -121,11 +121,9 @@ fun FeedScreen(
     // remember it so QuestionCard/detail-sheet callbacks keep a stable identity.
     val mcActions = remember(viewModel) {
         McActions(
-            onToggleOptionExpanded = viewModel::toggleOptionExpanded,
-            onOptionSliderChange = viewModel::setOptionSliderValue,
-            onUpdateOptionForecast = viewModel::updateOptionForecast,
-            onPieValuesChange = viewModel::setPieValues,
-            onUpdatePieForecasts = viewModel::updatePieForecasts,
+            onOptionDraftChange = viewModel::setOptionDraft,
+            onBalanceOptionDrafts = viewModel::balanceOptionDrafts,
+            onUpdateOptionForecasts = viewModel::updateOptionForecasts,
             onResolveExclusive = viewModel::resolveMcExclusive,
             onResolveOption = viewModel::resolveMcOption,
         )

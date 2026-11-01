@@ -2,6 +2,7 @@ package dev.russell.fatebook.ui
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -18,6 +19,7 @@ import dev.russell.fatebook.domain.model.QuestionOption
 import dev.russell.fatebook.domain.model.QuestionType
 import dev.russell.fatebook.domain.model.Resolution
 import dev.russell.fatebook.ui.components.ProbabilitySlider
+import dev.russell.fatebook.ui.detail.OptionForecastEditor
 import dev.russell.fatebook.ui.feed.DueRow
 import dev.russell.fatebook.ui.feed.QuickAction
 import dev.russell.fatebook.ui.theme.FatebookTheme
@@ -124,5 +126,40 @@ class LedgerGesturesTest {
             .performSemanticsAction(SemanticsActions.SetProgress) { assertTrue(it(0.6f)) }
         compose.waitForIdle()
         assertEquals(0.6f, value, 0.001f)
+    }
+
+    @Test
+    fun optionRulerAndBitKeysEditOnlyTheirOwnOption() {
+        var drafts by mutableStateOf(mapOf("a" to 50))
+        compose.setContent {
+            FatebookTheme(darkTheme = false) {
+                OptionForecastEditor(
+                    options = listOf(
+                        QuestionOption(id = "a", text = "Alpha", latestForecast = 0.5),
+                        QuestionOption(id = "b", text = "Beta"),
+                    ),
+                    drafts = drafts,
+                    exclusive = true,
+                    onDraftChange = { id, percent -> drafts = drafts + (id to percent) },
+                    onBalance = {},
+                )
+            }
+        }
+
+        // An unset option's first touch places its needle.
+        compose.onNodeWithContentDescription("Beta: no forecast").performClick()
+        compose.waitForIdle()
+        assertEquals(50, drafts["b"])
+
+        compose.onNodeWithContentDescription("Alpha: 50 percent")
+            .performTouchInput { swipeRight(startX = centerX, endX = right) }
+        compose.waitForIdle()
+        assertEquals(99, drafts["a"])
+        assertEquals(50, drafts["b"])
+
+        compose.onNodeWithContentDescription("Beta: subtract one bit of evidence").performClick()
+        compose.waitForIdle()
+        assertEquals(33, drafts["b"])
+        assertEquals(99, drafts["a"])
     }
 }

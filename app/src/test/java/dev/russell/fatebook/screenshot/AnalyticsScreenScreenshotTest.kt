@@ -24,7 +24,7 @@ class AnalyticsScreenScreenshotTest {
     @Test
     fun analyticsScreen_loading() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 AnalyticsScreenContent(
                     state = AnalyticsUiState(isLoading = true),
                 )
@@ -35,7 +35,7 @@ class AnalyticsScreenScreenshotTest {
     @Test
     fun analyticsScreen_emptyData() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 AnalyticsScreenContent(
                     state = AnalyticsUiState(
                         isLoading = false,
@@ -53,43 +53,23 @@ class AnalyticsScreenScreenshotTest {
     @Test
     fun analyticsScreen_withData() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 AnalyticsScreenContent(
-                    state = AnalyticsUiState(
-                        isLoading = false,
-                        brierScore = 0.18,
-                        totalForecasts = 42,
-                        // Folded buckets (50-100% only), varied counts so the
-                        // opacity-encodes-count effect is visible. 70-75% is an
-                        // intentional gap to show how empty slots render.
-                        calibrationBuckets = listOf(
-                            CalibrationBucket("50-55%", 0.525f, 0.48f, 6),
-                            CalibrationBucket("55-60%", 0.575f, 0.55f, 4),
-                            CalibrationBucket("60-65%", 0.625f, 0.71f, 9),
-                            CalibrationBucket("65-70%", 0.675f, 0.62f, 1),
-                            CalibrationBucket("75-80%", 0.775f, 0.72f, 14),
-                            CalibrationBucket("80-85%", 0.825f, 0.80f, 25),
-                            CalibrationBucket("85-90%", 0.875f, 0.95f, 2),
-                            CalibrationBucket("90-95%", 0.925f, 0.90f, 7),
-                            CalibrationBucket("95-100%", 0.975f, 0.96f, 3),
-                        ),
-                        currentStreak = 7,
-                        dailyActivity = sampleHeatmap(),
-                        tagBreakdown = listOf(
-                            TagBrierEntry(tag = "work", brier = 0.12, questionCount = 8),
-                            TagBrierEntry(tag = "health", brier = 0.31, questionCount = 3),
-                            TagBrierEntry(tag = "long-shot", brier = 0.55, questionCount = 1),
-                        ),
-                        monthlyBrier = listOf(
-                            MonthlyBrier(YearMonth.of(2025, 9), 0.42, 3),
-                            MonthlyBrier(YearMonth.of(2025, 10), 0.35, 5),
-                            MonthlyBrier(YearMonth.of(2025, 11), 0.51, 2),
-                            MonthlyBrier(YearMonth.of(2025, 12), 0.22, 7),
-                            MonthlyBrier(YearMonth.of(2026, 1), 0.18, 4),
-                            MonthlyBrier(YearMonth.of(2026, 2), 0.27, 6),
-                        ),
-                    ),
+                    state = richState,
                 )
+            }
+        }
+    }
+
+    /** The phone viewport clips the page at Activity; this covers everything below it. */
+    @Test
+    fun analyticsScreen_fullPage() {
+        paparazzi.unsafeUpdateConfig(
+            deviceConfig = DeviceConfig.PIXEL_6.copy(screenHeight = 5200),
+        )
+        paparazzi.snapshot {
+            FatebookTheme(darkTheme = false) {
+                AnalyticsScreenContent(state = richState)
             }
         }
     }
@@ -97,7 +77,7 @@ class AnalyticsScreenScreenshotTest {
     @Test
     fun analyticsScreen_dark() {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = true, dynamicColor = false) {
+            FatebookTheme(darkTheme = true) {
                 AnalyticsScreenContent(
                     state = AnalyticsUiState(
                         isLoading = false,
@@ -153,4 +133,39 @@ class AnalyticsScreenScreenshotTest {
             }
         }
     }
+
+    private val richState get() = AnalyticsUiState(
+                        isLoading = false,
+                        brierScore = 0.18,
+                        totalForecasts = 42,
+                        // Folded buckets (50-100% only), varied counts so the
+                        // opacity-encodes-count effect is visible. 70-75% is an
+                        // intentional gap to show how empty slots render.
+                        calibrationBuckets = listOf(
+                            CalibrationBucket("50-55%", 0.525f, 0.48f, 6),
+                            CalibrationBucket("55-60%", 0.575f, 0.55f, 4),
+                            CalibrationBucket("60-65%", 0.625f, 0.71f, 9),
+                            CalibrationBucket("65-70%", 0.675f, 0.62f, 1),
+                            CalibrationBucket("75-80%", 0.775f, 0.72f, 14),
+                            CalibrationBucket("80-85%", 0.825f, 0.80f, 25),
+                            CalibrationBucket("85-90%", 0.875f, 0.95f, 2),
+                            CalibrationBucket("90-95%", 0.925f, 0.90f, 7),
+                            CalibrationBucket("95-100%", 0.975f, 0.96f, 3),
+                        ),
+                        currentStreak = 7,
+                        dailyActivity = sampleHeatmap(),
+                        tagBreakdown = listOf(
+                            TagBrierEntry(tag = "work", brier = 0.12, questionCount = 8),
+                            TagBrierEntry(tag = "health", brier = 0.31, questionCount = 3),
+                            TagBrierEntry(tag = "long-shot", brier = 0.55, questionCount = 1),
+                        ),
+                        monthlyBrier = listOf(
+                            MonthlyBrier(YearMonth.of(2025, 9), 0.42, 3),
+                            MonthlyBrier(YearMonth.of(2025, 10), 0.35, 5),
+                            MonthlyBrier(YearMonth.of(2025, 11), 0.51, 2),
+                            MonthlyBrier(YearMonth.of(2025, 12), 0.22, 7),
+                            MonthlyBrier(YearMonth.of(2026, 1), 0.18, 4),
+                            MonthlyBrier(YearMonth.of(2026, 2), 0.27, 6),
+                        ),
+                    )
 }

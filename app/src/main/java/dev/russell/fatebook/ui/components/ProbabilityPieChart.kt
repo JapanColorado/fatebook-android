@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.russell.fatebook.ui.theme.MonoFamily
 import dev.russell.fatebook.ui.theme.mcOptionColor
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -136,6 +137,10 @@ fun ProbabilityPieChart(
             )
         }
 
+        // Punch out the middle: a ring reads as a gauge, and the labels get a
+        // consistent band to sit in.
+        drawCircle(color = surfaceColor, radius = radius * HOLE_RATIO, center = center)
+
         // Percent labels inside slices big enough to hold them.
         values.forEachIndexed { i, value ->
             if (value < 0.055f) return@forEachIndexed
@@ -143,7 +148,7 @@ fun ProbabilityPieChart(
                 (START_ANGLE + (cumulative[i] + value / 2f) * 360f).toDouble(),
             )
             val labelPos = center +
-                Offset(cos(midAngle).toFloat(), sin(midAngle).toFloat()) * (radius * 0.62f)
+                Offset(cos(midAngle).toFloat(), sin(midAngle).toFloat()) * (radius * (1f + HOLE_RATIO) / 2f)
             val layout = labelLayouts.getOrPut(percents[i]) {
                 textMeasurer.measure(text = "${percents[i]}%", style = LABEL_STYLE)
             }
@@ -174,14 +179,18 @@ fun ProbabilityPieChart(
     }
 }
 
+/** Inner radius of the ring, as a fraction of the outer. */
+private const val HOLE_RATIO = 0.52f
+
 /** Pie starts at 12 o'clock and runs clockwise. */
 private const val START_ANGLE = -90f
 
 /** Percent labels are always white-on-slice-color, independent of theme. */
 private val LABEL_STYLE = TextStyle(
     color = Color.White,
+    fontFamily = MonoFamily,
     fontSize = 13.sp,
-    fontWeight = FontWeight.Bold,
+    fontWeight = FontWeight.SemiBold,
 )
 
 /** How far (as a fraction of the circle) a touch can be from a boundary and still grab it. */

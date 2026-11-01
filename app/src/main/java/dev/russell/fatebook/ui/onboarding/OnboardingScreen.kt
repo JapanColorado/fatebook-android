@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,19 +13,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,15 +43,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.russell.fatebook.ui.components.LedgerMargin
+import dev.russell.fatebook.ui.components.LedgerRule
+import dev.russell.fatebook.ui.components.MastheadRule
+import dev.russell.fatebook.ui.components.ProbabilityBar
 import dev.russell.fatebook.ui.components.ReminderTimeDialog
 import dev.russell.fatebook.ui.components.rememberNotificationPermissionRequester
+import dev.russell.fatebook.ui.theme.Ledger
+import dev.russell.fatebook.ui.theme.forecastColor
 
 private const val API_SETUP_URL = "https://fatebook.io/api-setup"
 
@@ -130,8 +141,7 @@ fun OnboardingScreenContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .padding(horizontal = LedgerMargin, vertical = 32.dp),
             ) {
                 when (page) {
                     OnboardingViewModel.PAGE_WELCOME -> WelcomePage()
@@ -162,38 +172,51 @@ private fun OnboardingBottomBar(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = LedgerMargin, vertical = 12.dp),
     ) {
-        PageDots(count = ONBOARDING_PAGE_COUNT, current = state.page)
+        PageProgress(count = ONBOARDING_PAGE_COUNT, current = state.page)
         Spacer(Modifier.height(12.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (state.page > 0) {
-                TextButton(onClick = onBack) { Text("Back") }
-            } else {
-                Spacer(Modifier.width(1.dp))
+                TextButton(onClick = onBack, modifier = Modifier.height(52.dp)) { Text("Back") }
             }
+            val primaryModifier = Modifier
+                .weight(1f)
+                .height(52.dp)
+            val shape = MaterialTheme.shapes.medium
             when (state.page) {
-                OnboardingViewModel.PAGE_WELCOME -> Button(onClick = onNext) { Text("Get started") }
+                OnboardingViewModel.PAGE_WELCOME -> Button(
+                    onClick = onNext,
+                    modifier = primaryModifier,
+                    shape = shape,
+                ) { Text("Get started") }
                 OnboardingViewModel.PAGE_API_KEY -> if (state.connected) {
-                    Button(onClick = onNext) { Text("Next") }
+                    Button(onClick = onNext, modifier = primaryModifier, shape = shape) { Text("Next") }
                 } else {
                     Button(
                         onClick = onConnect,
+                        modifier = primaryModifier,
+                        shape = shape,
                         enabled = state.apiKey.isNotBlank() && !state.isConnecting,
                     ) {
                         if (state.isConnecting) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                strokeWidth = 2.dp,
+                            )
                         } else {
                             Text("Connect")
                         }
                     }
                 }
-                else -> Button(onClick = onFinish) {
+                else -> Button(onClick = onFinish, modifier = primaryModifier, shape = shape) {
                     Text(if (state.notificationsEnabled) "Finish" else "Skip for now")
                 }
             }
@@ -201,84 +224,158 @@ private fun OnboardingBottomBar(
     }
 }
 
+/** One thick rule per page, inked in as you progress, with the folio beside it. */
 @Composable
-private fun PageDots(count: Int, current: Int) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun PageProgress(count: Int, current: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clearAndSetSemantics { contentDescription = "Page ${current + 1} of $count" },
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         repeat(count) { index ->
             Box(
                 modifier = Modifier
-                    .size(8.dp)
+                    .weight(1f)
+                    .height(3.dp)
                     .background(
-                        color = if (index == current) {
-                            MaterialTheme.colorScheme.primary
+                        if (index <= current) {
+                            MaterialTheme.colorScheme.onSurface
                         } else {
-                            MaterialTheme.colorScheme.outlineVariant
+                            Ledger.colors.rule
                         },
-                        shape = CircleShape,
                     ),
             )
         }
+        Text(
+            text = "${current + 1}/$count",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 6.dp),
+        )
     }
 }
 
 @Composable
-private fun WelcomePage() {
-    Icon(
-        imageVector = Icons.AutoMirrored.Filled.TrendingUp,
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.size(72.dp),
-    )
-    Spacer(Modifier.height(24.dp))
+private fun PageHeading(eyebrow: String, title: String, body: String) {
     Text(
-        text = "Welcome to Fatebook",
-        style = MaterialTheme.typography.headlineMedium,
-        textAlign = TextAlign.Center,
+        text = eyebrow.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    Text(
+        text = title,
+        style = MaterialTheme.typography.headlineLarge,
+        modifier = Modifier.semantics { heading() },
     )
     Spacer(Modifier.height(12.dp))
     Text(
-        text = "Write down what you think will happen, say how sure you are, and find out how well-calibrated you really are.",
+        text = body,
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
     )
-    Spacer(Modifier.height(32.dp))
-    FeatureRow(
-        icon = Icons.Default.Add,
-        title = "Predict",
-        body = "Jot down a question, a resolve-by date and a probability in seconds — even offline.",
+}
+
+@Composable
+private fun WelcomePage() {
+    Text(
+        text = "Fatebook",
+        style = MaterialTheme.typography.headlineLarge.copy(fontSize = 52.sp, lineHeight = 56.sp),
+        modifier = Modifier.semantics { heading() },
     )
+    MastheadRule(Modifier.padding(top = 4.dp))
     Spacer(Modifier.height(16.dp))
+    Text(
+        text = "Write down what you think will happen. Say how sure you are. Find out how well-calibrated you really are.",
+        style = MaterialTheme.typography.titleLarge.copy(
+            fontStyle = FontStyle.Italic,
+            fontWeight = FontWeight.Normal,
+        ),
+    )
+    Spacer(Modifier.height(28.dp))
+    Specimen()
+    Spacer(Modifier.height(28.dp))
     FeatureRow(
-        icon = Icons.Default.CheckCircle,
+        numeral = "1",
+        title = "Predict",
+        body = "Jot down a question, a resolve-by date and a probability in seconds, even offline.",
+    )
+    LedgerRule()
+    FeatureRow(
+        numeral = "2",
         title = "Resolve",
         body = "When the date comes, mark it YES or NO, straight from a notification if you like.",
     )
-    Spacer(Modifier.height(16.dp))
+    LedgerRule()
     FeatureRow(
-        icon = Icons.Default.BarChart,
+        numeral = "3",
         title = "Calibrate",
         body = "See your Brier score, calibration curve and streak grow over time.",
     )
 }
 
+/** A sample ledger entry, static so it can't age: shows what you're about to be writing. */
+@Composable
+private fun Specimen() {
+    val color = forecastColor(0.7)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clearAndSetSemantics {
+                contentDescription = "Example entry: Will it rain on my wedding day? 70 percent."
+            },
+    ) {
+        LedgerRule()
+        Column(
+            modifier = Modifier.padding(vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = "Will it rain on my wedding day?",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "70%",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = color,
+                )
+            }
+            ProbabilityBar(fractions = listOf(0.7f to color))
+            Text(
+                text = "IN 3 MONTHS · #LIFE",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        LedgerRule()
+    }
+}
+
 @Composable
 private fun FeatureRow(
-    icon: ImageVector,
+    numeral: String,
     title: String,
     body: String,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(28.dp),
+        Text(
+            text = numeral,
+            style = MaterialTheme.typography.displaySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(32.dp),
         )
-        Spacer(Modifier.width(16.dp))
         Column {
             Text(title, style = MaterialTheme.typography.titleMedium)
             Text(
@@ -296,20 +393,19 @@ private fun ApiKeyPage(
     onApiKeyChanged: (String) -> Unit,
     onOpenApiSetup: () -> Unit,
 ) {
-    Text(
-        text = "Connect your account",
-        style = MaterialTheme.typography.headlineMedium,
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(12.dp))
-    Text(
-        text = "The app talks to fatebook.io with a personal API key. Create one on the website, then paste it below. It's stored encrypted on this device only.",
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
+    PageHeading(
+        eyebrow = "Your account",
+        title = "Connect your account",
+        body = "The app talks to fatebook.io with a personal API key. Create one on the website, then paste it below. It's stored encrypted on this device only.",
     )
     Spacer(Modifier.height(24.dp))
-    OutlinedButton(onClick = onOpenApiSetup, modifier = Modifier.fillMaxWidth()) {
+    OutlinedButton(
+        onClick = onOpenApiSetup,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        shape = MaterialTheme.shapes.medium,
+    ) {
         Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
         Text("Open fatebook.io/api-setup")
@@ -332,7 +428,7 @@ private fun ApiKeyPage(
                 )
                 state.connected -> Text(
                     "Connected!",
-                    color = MaterialTheme.colorScheme.primary,
+                    color = Ledger.colors.yes,
                 )
             }
         },
@@ -347,34 +443,48 @@ private fun NotificationsPage(
 ) {
     var showTimePicker by remember { mutableStateOf(false) }
 
-    Text(
-        text = "A daily nudge",
-        style = MaterialTheme.typography.headlineMedium,
-        textAlign = TextAlign.Center,
+    PageHeading(
+        eyebrow = "Notifications",
+        title = "A daily nudge",
+        body = "Once a day, Fatebook can remind you to make a prediction and tell you which questions are ready to resolve. Each kind can be tuned in Settings later.",
     )
-    Spacer(Modifier.height(12.dp))
-    Text(
-        text = "Once a day, Fatebook can remind you to make a prediction and tell you which questions are ready to resolve. Each kind can be tuned in Settings later.",
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(32.dp))
+    Spacer(Modifier.height(24.dp))
+    LedgerRule()
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = state.notificationsEnabled,
+                role = Role.Switch,
+                onValueChange = onNotificationsEnabledChanged,
+            )
+            .padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Enable notifications", style = MaterialTheme.typography.titleMedium)
+        Text("Enable notifications", style = MaterialTheme.typography.bodyLarge)
         Switch(
             checked = state.notificationsEnabled,
-            onCheckedChange = onNotificationsEnabledChanged,
+            onCheckedChange = null,
         )
     }
+    LedgerRule()
     if (state.notificationsEnabled) {
-        TextButton(onClick = { showTimePicker = true }) {
-            Text("Notification time: %02d:%02d".format(state.reminderHour, state.reminderMinute))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(role = Role.Button) { showTimePicker = true }
+                .padding(vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Notification time", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "%02d:%02d".format(state.reminderHour, state.reminderMinute),
+                style = MaterialTheme.typography.displaySmall,
+            )
         }
+        LedgerRule()
     }
     if (showTimePicker) {
         ReminderTimeDialog(

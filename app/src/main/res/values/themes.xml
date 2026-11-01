@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Fatebook" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- windowBackground matches the Compose paper colour so launch doesn't flash white. -->
+    <style name="Theme.Fatebook" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+    </style>
 </resources>

@@ -35,13 +35,6 @@ fun DatePickerField(
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = selectedDate
-            .atStartOfDay(ZoneOffset.UTC)
-            .toInstant()
-            .toEpochMilli()
-    )
-
     val interactionSource = remember { MutableInteractionSource() }
 
     LaunchedEffect(interactionSource) {
@@ -65,6 +58,13 @@ fun DatePickerField(
     )
 
     if (showDialog) {
+        // Created per opening, so it reflects dates chosen outside the dialog.
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = selectedDate
+                .atStartOfDay(ZoneOffset.UTC)
+                .toInstant()
+                .toEpochMilli()
+        )
         DatePickerDialog(
             onDismissRequest = { showDialog = false },
             confirmButton = {

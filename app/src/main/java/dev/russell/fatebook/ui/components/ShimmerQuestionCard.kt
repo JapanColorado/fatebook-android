@@ -9,19 +9,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -52,9 +47,9 @@ private fun rememberShimmerTranslate(): () -> Float {
 
 @Composable
 private fun shimmerColors(): List<Color> = listOf(
-    MaterialTheme.colorScheme.surfaceVariant,
-    MaterialTheme.colorScheme.surface,
-    MaterialTheme.colorScheme.surfaceVariant,
+    MaterialTheme.colorScheme.surfaceContainerHigh,
+    MaterialTheme.colorScheme.surfaceContainerLow,
+    MaterialTheme.colorScheme.surfaceContainerHigh,
 )
 
 private fun Modifier.shimmer(
@@ -71,7 +66,7 @@ private fun Modifier.shimmer(
     )
 }
 
-/** Standalone shimmer card with its own animation (previews/screenshots). */
+/** Standalone shimmer row with its own animation (previews/screenshots). */
 @Composable
 fun ShimmerQuestionCard(modifier: Modifier = Modifier) {
     ShimmerQuestionCard(
@@ -87,65 +82,66 @@ private fun ShimmerQuestionCard(
     translate: () -> Float,
     modifier: Modifier = Modifier,
 ) {
-    val placeholderShape = RoundedCornerShape(4.dp)
+    val shape = MaterialTheme.shapes.extraSmall
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Row(
+    // Same geometry as QuestionCard, so content lands where the skeleton was.
+    Column(modifier = modifier.fillMaxWidth()) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
+                .padding(horizontal = LedgerMargin, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 // Title placeholder
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.7f)
+                        .weight(1f)
                         .height(20.dp)
-                        .clip(placeholderShape)
+                        .clip(shape)
                         .shimmer(colors, translate),
                 )
-                // "Resolves..." and "Predicted..." placeholders on one line
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(100.dp)
-                            .height(14.dp)
-                            .clip(placeholderShape)
-                            .shimmer(colors, translate),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .width(80.dp)
-                            .height(14.dp)
-                            .clip(placeholderShape)
-                            .shimmer(colors, translate),
-                    )
-                }
+                // Figure placeholder
+                Box(
+                    modifier = Modifier
+                        .width(44.dp)
+                        .height(28.dp)
+                        .clip(shape)
+                        .shimmer(colors, translate),
+                )
             }
-
-            // Percentage badge placeholder
+            // Probability bar placeholder
             Box(
                 modifier = Modifier
-                    .padding(start = 12.dp)
-                    .width(40.dp)
-                    .height(24.dp)
-                    .clip(placeholderShape)
+                    .fillMaxWidth()
+                    .height(6.dp)
                     .shimmer(colors, translate),
             )
+            // Metadata line placeholders
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(96.dp)
+                        .height(12.dp)
+                        .clip(shape)
+                        .shimmer(colors, translate),
+                )
+                Box(
+                    modifier = Modifier
+                        .width(48.dp)
+                        .height(12.dp)
+                        .clip(shape)
+                        .shimmer(colors, translate),
+                )
+            }
         }
+        LedgerRule()
     }
 }
 
@@ -154,13 +150,10 @@ fun ShimmerQuestionCardList(
     modifier: Modifier = Modifier,
     count: Int = 6,
 ) {
-    // One shared transition for the whole list instead of one per card.
+    // One shared transition for the whole list instead of one per row.
     val translate = rememberShimmerTranslate()
     val colors = shimmerColors()
-    Column(
-        modifier = modifier.padding(PaddingValues(16.dp)),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    Column(modifier = modifier) {
         repeat(count) {
             ShimmerQuestionCard(colors = colors, translate = translate)
         }

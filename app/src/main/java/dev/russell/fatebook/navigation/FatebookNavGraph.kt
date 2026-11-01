@@ -1,13 +1,23 @@
 package dev.russell.fatebook.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dev.russell.fatebook.data.preferences.UserPreferences
@@ -50,69 +60,100 @@ fun FatebookNavGraph(
         }
     }
 
-    NavHost(navController = navController, startDestination = startDestination) {
-        composable(Routes.ONBOARDING) {
-            OnboardingScreen(
-                onFinished = {
-                    navController.navigate(Routes.FEED) {
-                        popUpTo(Routes.ONBOARDING) { inclusive = true }
-                    }
-                    // A shortcut/share that arrived keyless still gets honoured.
-                    if (openCreate || sharedText != null) {
-                        navController.navigate(Routes.create(sharedText))
-                    }
-                },
-            )
-        }
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+    val currentTab = LedgerTab.entries.firstOrNull { it.route == currentRoute }
 
-        composable(Routes.FEED) {
-            FeedScreen(
-                onCreateClick = { navController.navigate(Routes.create()) },
-                onSettingsClick = { navController.navigate(Routes.SETTINGS) },
-                onAnalyticsClick = { navController.navigate(Routes.ANALYTICS) },
-                initialFilter = when {
-                    openResolveFilter -> FeedFilter.READY_TO_RESOLVE
-                    openSoonFilter -> FeedFilter.RESOLVING_SOON
-                    else -> null
-                },
-                initialQuestionId = openQuestionId,
-            )
-        }
-
-        composable(Routes.ANALYTICS) {
-            AnalyticsScreen(
-                onBack = { navController.popBackStack() },
-            )
-        }
-
-        composable(
-            route = Routes.CREATE,
-            arguments = listOf(
-                navArgument("prefill") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-            ),
+    Scaffold(
+        bottomBar = {
+            if (currentTab != null) {
+                LedgerBottomBar(
+                    selected = currentTab,
+                    onSelect = { tab ->
+                        navController.navigate(tab.route) {
+                            // Feed is the root of every tab (onboarding pops itself on
+                            // finish), so this holds each tab's state as you move between.
+                            popUpTo(Routes.FEED) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onCreate = { navController.navigate(Routes.create()) },
+                )
+            }
+        },
+    ) { padding ->
+        NavHost(
+            navController = navController,
+            startDestination = startDestination,
+            modifier = Modifier
+                .padding(padding)
+                .consumeWindowInsets(padding),
+            enterTransition = { fadeIn(tween(TAB_FADE_MS)) },
+            exitTransition = { fadeOut(tween(TAB_FADE_MS)) },
+            popEnterTransition = { fadeIn(tween(TAB_FADE_MS)) },
+            popExitTransition = { fadeOut(tween(TAB_FADE_MS)) },
         ) {
-            CreateScreen(
-                onBack = { navController.popBackStack() },
-            )
-        }
+            composable(Routes.ONBOARDING) {
+                OnboardingScreen(
+                    onFinished = {
+                        navController.navigate(Routes.FEED) {
+                            popUpTo(Routes.ONBOARDING) { inclusive = true }
+                        }
+                        // A shortcut/share that arrived keyless still gets honoured.
+                        if (openCreate || sharedText != null) {
+                            navController.navigate(Routes.create(sharedText))
+                        }
+                    },
+                )
+            }
 
-        composable(Routes.SETTINGS) {
-            SettingsScreen(
-                onBack = if (userPreferences.hasApiKey) {
-                    { navController.popBackStack() }
-                } else {
-                    null
-                },
-                onValidated = {
-                    navController.navigate(Routes.FEED) {
-                        popUpTo(Routes.SETTINGS) { inclusive = true }
-                    }
-                },
-            )
+            composable(Routes.FEED) {
+                FeedScreen(
+                    onSettingsClick = {
+                        navController.navigate(Routes.SETTINGS) {
+                            popUpTo(Routes.FEED) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    initialFilter = when {
+                        openResolveFilter -> FeedFilter.READY_TO_RESOLVE
+                        openSoonFilter -> FeedFilter.RESOLVING_SOON
+                        else -> null
+                    },
+                    initialQuestionId = openQuestionId,
+                )
+            }
+
+            composable(Routes.ANALYTICS) {
+                AnalyticsScreen()
+            }
+
+            composable(
+                route = Routes.CREATE,
+                arguments = listOf(
+                    navArgument("prefill") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+                enterTransition = { slideInVertically { it / 8 } + fadeIn(tween(TAB_FADE_MS)) },
+                popExitTransition = { slideOutVertically { it / 8 } + fadeOut(tween(TAB_FADE_MS)) },
+            ) {
+                CreateScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.SETTINGS) {
+                // A validated key no longer bounces to the feed: Settings is a tab
+                // now, and the user may well carry on configuring.
+                SettingsScreen(onBack = null)
+            }
         }
     }
 }
+
+private const val TAB_FADE_MS = 150

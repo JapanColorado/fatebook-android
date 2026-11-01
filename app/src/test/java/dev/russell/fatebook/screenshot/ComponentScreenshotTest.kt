@@ -39,7 +39,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_active_highForecast() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will GPT-5 be released by 2026?",
@@ -55,7 +55,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_active_lowForecast() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will we colonize Mars by 2030?",
@@ -71,7 +71,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_active_mediumForecast() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will I finish this book by Friday?",
@@ -87,7 +87,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_withTags() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will I hit my deadlift PR this quarter?",
@@ -104,7 +104,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_multipleChoice_active() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Which framework will we pick?",
@@ -126,7 +126,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_multipleChoice_resolved() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Which framework did we pick?",
@@ -157,7 +157,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_quantity() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "How many books will I read this year?",
@@ -175,7 +175,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_resolved_yes() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Did it rain yesterday?",
@@ -192,7 +192,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_resolved_no() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will the stock market crash this week?",
@@ -209,7 +209,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_resolved_ambiguous() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will the project launch on time?",
@@ -226,7 +226,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_hiddenForecast() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Secret prediction — forecast hidden",
@@ -241,7 +241,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_longTitle() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will the extremely long prediction title that goes on and on and on and on be truncated properly in the card UI?",
@@ -258,7 +258,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_active_dark() {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = true, dynamicColor = false) {
+            FatebookTheme(darkTheme = true) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will GPT-5 be released by 2026?",
@@ -273,7 +273,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_resolved_dark() {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = true, dynamicColor = false) {
+            FatebookTheme(darkTheme = true) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Did it rain yesterday?",
@@ -292,7 +292,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_overdue() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will the package arrive this week?",
@@ -309,7 +309,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_overdue_dark() {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = true, dynamicColor = false) {
+            FatebookTheme(darkTheme = true) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will the package arrive this week?",
@@ -326,7 +326,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_dueToday() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Will I finish the report today?",
@@ -343,7 +343,7 @@ class ComponentScreenshotTest {
     @Test
     fun questionCard_resolved_withResolvedAt() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 QuestionCard(
                     question = TestData.question(
                         title = "Did it rain yesterday?",
@@ -370,7 +370,7 @@ class ComponentScreenshotTest {
     @Test
     fun forecastSparkline_rising() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 // Column gives loose height constraints, as the detail sheet does.
                 Column(Modifier.background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
                     ForecastSparkline(points = risingPoints, contentDescription = "Your forecasts")
@@ -382,7 +382,7 @@ class ComponentScreenshotTest {
     @Test
     fun forecastSparkline_dark() {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = true, dynamicColor = false) {
+            FatebookTheme(darkTheme = true) {
                 // Column gives loose height constraints, as the detail sheet does.
                 Column(Modifier.background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
                     ForecastSparkline(points = risingPoints, contentDescription = "Your forecasts")
@@ -396,7 +396,7 @@ class ComponentScreenshotTest {
     @Test
     fun probabilitySlider_low() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 ProbabilitySlider(value = 0.10f, onValueChange = {})
             }
         }
@@ -405,7 +405,7 @@ class ComponentScreenshotTest {
     @Test
     fun probabilitySlider_medium() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 ProbabilitySlider(value = 0.50f, onValueChange = {})
             }
         }
@@ -414,7 +414,7 @@ class ComponentScreenshotTest {
     @Test
     fun probabilitySlider_high() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 ProbabilitySlider(value = 0.90f, onValueChange = {})
             }
         }
@@ -425,7 +425,7 @@ class ComponentScreenshotTest {
     @Test
     fun probabilityPieChart_evenThreeWay() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 ProbabilityPieChart(
                     segments = listOf(
                         PieSegment("o1", "Compose", 1f / 3f),
@@ -441,7 +441,7 @@ class ComponentScreenshotTest {
     @Test
     fun probabilityPieChart_unevenFiveWay() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 ProbabilityPieChart(
                     segments = listOf(
                         PieSegment("o1", "Politics", 0.50f),
@@ -459,15 +459,18 @@ class ComponentScreenshotTest {
     @Test
     fun probabilityPieChart_tinySlice_dark() {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = true, dynamicColor = false) {
-                ProbabilityPieChart(
-                    segments = listOf(
-                        PieSegment("o1", "Yes, easily", 0.79f),
-                        PieSegment("o2", "Barely", 0.19f),
-                        PieSegment("o3", "No", 0.02f),
-                    ),
-                    onValuesChange = {},
-                )
+            FatebookTheme(darkTheme = true) {
+                // The ring's hole is surface-coloured, so it needs a surface behind it.
+                androidx.compose.material3.Surface {
+                    ProbabilityPieChart(
+                        segments = listOf(
+                            PieSegment("o1", "Yes, easily", 0.79f),
+                            PieSegment("o2", "Barely", 0.19f),
+                            PieSegment("o3", "No", 0.02f),
+                        ),
+                        onValuesChange = {},
+                    )
+                }
             }
         }
     }
@@ -477,7 +480,7 @@ class ComponentScreenshotTest {
     @Test
     fun shimmerQuestionCard() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 ShimmerQuestionCard()
             }
         }
@@ -488,7 +491,7 @@ class ComponentScreenshotTest {
     @Test
     fun errorBanner_networkError() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 ErrorBanner(
                     message = "Unable to connect. Check your internet connection.",
                     onRetry = {},
@@ -501,7 +504,7 @@ class ComponentScreenshotTest {
     @Test
     fun errorBanner_dark() {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = true, dynamicColor = false) {
+            FatebookTheme(darkTheme = true) {
                 ErrorBanner(
                     message = "Unable to connect. Check your internet connection.",
                     onRetry = {},
@@ -516,7 +519,7 @@ class ComponentScreenshotTest {
     @Test
     fun offlineBanner_light() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 OfflineBanner()
             }
         }
@@ -525,7 +528,7 @@ class ComponentScreenshotTest {
     @Test
     fun offlineBanner_dark() {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = true, dynamicColor = false) {
+            FatebookTheme(darkTheme = true) {
                 OfflineBanner()
             }
         }
@@ -536,7 +539,7 @@ class ComponentScreenshotTest {
     @Test
     fun syncIssuesBanner_single() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 SyncIssuesBanner(count = 1, onView = {})
             }
         }
@@ -545,7 +548,7 @@ class ComponentScreenshotTest {
     @Test
     fun syncIssuesBanner_multiple() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 SyncIssuesBanner(count = 3, onView = {})
             }
         }

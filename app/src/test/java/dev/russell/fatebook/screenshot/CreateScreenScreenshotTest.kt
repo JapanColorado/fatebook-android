@@ -10,6 +10,8 @@ import org.junit.Rule
 import org.junit.Test
 import java.time.LocalDate
 
+private val TEST_TODAY = java.time.LocalDate.of(2026, 3, 14)
+
 class CreateScreenScreenshotTest {
 
     @get:Rule
@@ -20,8 +22,9 @@ class CreateScreenScreenshotTest {
     @Test
     fun createScreen_empty() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 CreateScreenContent(
+                    today = TEST_TODAY,
                     state = CreateUiState(
                         resolveBy = LocalDate.of(2026, 4, 1),
                     ),
@@ -33,8 +36,9 @@ class CreateScreenScreenshotTest {
     @Test
     fun createScreen_filled() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 CreateScreenContent(
+                    today = TEST_TODAY,
                     state = CreateUiState(
                         title = "Will I get promoted this quarter?",
                         forecast = 0.65f,
@@ -48,8 +52,9 @@ class CreateScreenScreenshotTest {
     @Test
     fun createScreen_withTemplates() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 CreateScreenContent(
+                    today = TEST_TODAY,
                     state = CreateUiState(
                         title = "Gym 3x this week?",
                         forecast = 0.7f,
@@ -69,8 +74,9 @@ class CreateScreenScreenshotTest {
     @Test
     fun createScreen_error() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 CreateScreenContent(
+                    today = TEST_TODAY,
                     state = CreateUiState(
                         title = "",
                         error = "Title is required",
@@ -84,8 +90,9 @@ class CreateScreenScreenshotTest {
     @Test
     fun createScreen_submitting() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 CreateScreenContent(
+                    today = TEST_TODAY,
                     state = CreateUiState(
                         title = "Will it rain tomorrow?",
                         forecast = 0.7f,
@@ -100,8 +107,9 @@ class CreateScreenScreenshotTest {
     @Test
     fun createScreen_dark() {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = true, dynamicColor = false) {
+            FatebookTheme(darkTheme = true) {
                 CreateScreenContent(
+                    today = TEST_TODAY,
                     state = CreateUiState(
                         title = "Will I get promoted this quarter?",
                         forecast = 0.65f,

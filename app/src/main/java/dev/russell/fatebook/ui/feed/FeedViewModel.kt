@@ -19,6 +19,8 @@ import dev.russell.fatebook.ui.components.PieChartMath
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +37,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.io.IOException
 import java.time.LocalDate
@@ -128,7 +131,21 @@ data class FeedUiState(
     val isOffline: Boolean = false,
     val syncErrors: List<SyncErrorEntry> = emptyList(),
     val showSyncErrorsSheet: Boolean = false,
+    /** Unresolved questions at or past their date: drives the Due tab badge and masthead. */
+    val readyCount: Int = 0,
+    /** All unresolved questions. */
+    val openCount: Int = 0,
+    /** A row action inside its undo window; its row is hidden until it commits or is undone. */
+    val pendingQuickAction: PendingQuickAction? = null,
 )
+
+/** One-tap (or swipe) actions on a due row, without opening the detail sheet. */
+sealed interface QuickAction {
+    data class Resolve(val resolution: Resolution) : QuickAction
+    data object SnoozeWeek : QuickAction
+}
+
+data class PendingQuickAction(val question: Question, val action: QuickAction)
 
 @HiltViewModel
 class FeedViewModel @Inject constructor(
@@ -150,6 +167,13 @@ class FeedViewModel @Inject constructor(
     private val _hasMore = MutableStateFlow(false)
     private val _isLoadingMore = MutableStateFlow(false)
     private val _showSyncErrorsSheet = MutableStateFlow(false)
+    private val _pendingQuickAction = MutableStateFlow<PendingQuickAction?>(null)
+    private var quickActionJob: Job? = null
+
+    private val readyCount: Flow<Int> =
+        repository.observeReadyToResolve().map { it.size }.distinctUntilChanged()
+    private val openCount: Flow<Int> =
+        repository.observeActive().map { it.size }.distinctUntilChanged()
 
     private val isOffline: Flow<Boolean> = networkMonitor.isOnline.map { !it }
 
@@ -224,11 +248,15 @@ class FeedViewModel @Inject constructor(
             questionsFlow, _filter, _isRefreshing, _error,
             _searchQuery, _selectedTag, availableTags, sort, _isInitialLoad,
             _hasMore, _isLoadingMore, isOffline, syncErrors, _showSyncErrorsSheet,
+            readyCount, openCount, _pendingQuickAction,
         )
     ) { args ->
+        val pending = args[16] as PendingQuickAction?
         @Suppress("UNCHECKED_CAST")
         FeedUiState(
-            questions = args[0] as List<Question>,
+            questions = (args[0] as List<Question>).let { questions ->
+                if (pending == null) questions else questions.filterNot { it.id == pending.question.id }
+            },
             filter = args[1] as FeedFilter,
             isRefreshing = args[2] as Boolean,
             error = args[3] as FeedError?,
@@ -242,6 +270,9 @@ class FeedViewModel @Inject constructor(
             isOffline = args[11] as Boolean,
             syncErrors = args[12] as List<SyncErrorEntry>,
             showSyncErrorsSheet = args[13] as Boolean,
+            readyCount = args[14] as Int,
+            openCount = args[15] as Int,
+            pendingQuickAction = pending,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FeedUiState())
 
@@ -510,6 +541,54 @@ class FeedViewModel @Inject constructor(
         )
     }
 
+    // --- Row quick actions ---
+
+    /**
+     * Run [action] on [question] after an undo window. Nothing is written until
+     * the window closes: resolutions can't be taken back through the public API,
+     * and a swipe is easy to do by accident. A second action commits the first.
+     */
+    fun quickAction(question: Question, action: QuickAction) {
+        flushQuickAction()
+        _pendingQuickAction.value = PendingQuickAction(question, action)
+        quickActionJob = viewModelScope.launch {
+            delay(QUICK_ACTION_UNDO_MS)
+            flushQuickAction()
+        }
+    }
+
+    fun undoQuickAction() {
+        quickActionJob?.cancel()
+        _pendingQuickAction.value = null
+    }
+
+    /** Commit now, e.g. the screen is going away and can't offer Undo any longer. */
+    fun flushQuickAction() {
+        val job = quickActionJob
+        quickActionJob = null
+        val pending = _pendingQuickAction.value ?: return
+        _pendingQuickAction.value = null
+        // NonCancellable: an app close flushes moments before viewModelScope dies.
+        viewModelScope.launch {
+            withContext(NonCancellable) {
+                try {
+                    when (val action = pending.action) {
+                        is QuickAction.Resolve ->
+                            repository.resolveQuestion(pending.question.id, action.resolution)
+                        QuickAction.SnoozeWeek -> repository.editQuestion(
+                            questionId = pending.question.id,
+                            resolveBy = LocalDate.now().plusWeeks(1),
+                        )
+                    }
+                } catch (e: Exception) {
+                    _error.value = classifyError(e, "Failed to update question")
+                }
+            }
+        }
+        // Last: when the timer itself lands here, this cancels the running coroutine.
+        job?.cancel()
+    }
+
     // --- Multiple choice ---
 
     fun toggleOptionExpanded(optionId: String) {
@@ -623,6 +702,10 @@ class FeedViewModel @Inject constructor(
         viewModelScope.launch {
             repository.discardErroredMutation(id)
         }
+    }
+
+    private companion object {
+        const val QUICK_ACTION_UNDO_MS = 5_000L
     }
 
     private fun classifyError(e: Exception, fallback: String): FeedError {

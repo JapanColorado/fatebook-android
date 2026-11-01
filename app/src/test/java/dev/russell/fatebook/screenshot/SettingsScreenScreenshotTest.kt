@@ -18,7 +18,7 @@ class SettingsScreenScreenshotTest {
     @Test
     fun settingsScreen_initial() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 SettingsScreenContent(
                     state = SettingsUiState(),
                 )
@@ -29,7 +29,7 @@ class SettingsScreenScreenshotTest {
     @Test
     fun settingsScreen_withApiKey() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 SettingsScreenContent(
                     state = SettingsUiState(
                         apiKey = "abc123def456",
@@ -43,7 +43,7 @@ class SettingsScreenScreenshotTest {
     @Test
     fun settingsScreen_validationError() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 SettingsScreenContent(
                     state = SettingsUiState(
                         apiKey = "bad-key",
@@ -58,7 +58,7 @@ class SettingsScreenScreenshotTest {
     @Test
     fun settingsScreen_notificationsEnabled() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 SettingsScreenContent(
                     state = SettingsUiState(
                         apiKey = "abc123",
@@ -75,7 +75,7 @@ class SettingsScreenScreenshotTest {
     @Test
     fun settingsScreen_validating() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 SettingsScreenContent(
                     state = SettingsUiState(
                         apiKey = "testing-key",
@@ -89,7 +89,7 @@ class SettingsScreenScreenshotTest {
     @Test
     fun settingsScreen_exactAlarmsDenied() {
         paparazzi.snapshot {
-            FatebookTheme(dynamicColor = false) {
+            FatebookTheme(darkTheme = false) {
                 SettingsScreenContent(
                     state = SettingsUiState(
                         apiKey = "abc123",
@@ -104,7 +104,7 @@ class SettingsScreenScreenshotTest {
     @Test
     fun settingsScreen_dark() {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = true, dynamicColor = false) {
+            FatebookTheme(darkTheme = true) {
                 SettingsScreenContent(
                     state = SettingsUiState(
                         apiKey = "abc123",

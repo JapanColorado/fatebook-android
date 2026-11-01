@@ -1,19 +1,17 @@
 package dev.russell.fatebook.ui.components
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -33,38 +31,43 @@ fun SyncErrorsSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = LedgerMargin, vertical = 8.dp),
         ) {
             Text(
                 text = "Sync issues",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(bottom = 4.dp),
+                style = MaterialTheme.typography.headlineMedium,
             )
+            MastheadRule(Modifier.padding(top = 4.dp, bottom = 12.dp))
             Text(
                 text = "These changes are stored locally but couldn't reach the server.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 12.dp),
             )
+            LedgerRule()
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            // fill = false: a long list scrolls without pushing Retry off the sheet.
+            LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
                 items(errors, key = { it.id }) { entry ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 12.dp),
+                        ) {
                             Text(
-                                text = entry.type,
-                                style = MaterialTheme.typography.bodyLarge,
+                                text = entry.type.uppercase(),
+                                style = MaterialTheme.typography.labelMedium,
                             )
                             Text(
                                 text = entry.message,
@@ -72,23 +75,21 @@ fun SyncErrorsSheet(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        TextButton(onClick = { onDiscard(entry.id) }) {
-                            Text("Discard")
-                        }
+                        LedgerAction(text = "Discard", onClick = { onDiscard(entry.id) })
                     }
-                    HorizontalDivider()
+                    LedgerRule()
                 }
             }
 
-            Row(
+            Button(
+                onClick = onRetryAll,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp, bottom = 8.dp),
-                horizontalArrangement = Arrangement.End,
+                    .padding(top = 16.dp, bottom = 8.dp)
+                    .height(52.dp),
+                shape = MaterialTheme.shapes.medium,
             ) {
-                OutlinedButton(onClick = onRetryAll) {
-                    Text("Retry all")
-                }
+                Text("Retry all")
             }
         }
     }

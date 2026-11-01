@@ -18,7 +18,7 @@ class OnboardingScreenScreenshotTest {
 
     private fun snapshot(state: OnboardingUiState, dark: Boolean = false) {
         paparazzi.snapshot {
-            FatebookTheme(darkTheme = dark, dynamicColor = false) {
+            FatebookTheme(darkTheme = dark) {
                 OnboardingScreenContent(state = state)
             }
         }

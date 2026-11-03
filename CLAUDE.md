@@ -30,6 +30,10 @@ Do NOT run `./gradlew` directly — it will fail because the system JDK is incom
 
 Android SDK location: `~/Android/Sdk` (user-writable; Gradle auto-downloads missing packages — the Debian SDK at `/usr/lib/android-sdk` lacks platforms and is not used)
 
+## Releases
+
+Every push to `main` that passes `.github/workflows/ci.yml` (the same checks as `pixi run check`) publishes a signed APK as a GitHub release tagged `v<versionName>`. Obtainium on the phone installs it. Pushes that touch only docs don't release. `versionCode` is the commit count and `versionName` is `<base>.<count>`: bump the base in `app/build.gradle.kts` by hand, never hard-code `versionCode`, and never rewrite `main`'s history. CI signs with the keystore in the repo secrets, which must stay the key the installed app was signed with (the workflow's `EXPECTED_CERT_SHA256` enforces this). The shared change → emulator → push loop is in `~/Projects/Android-Apps/CLAUDE.md`.
+
 ## Architecture
 
 MVVM + Repository pattern, offline-first.
@@ -82,7 +86,7 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 
 **Screen composable pattern**: Each screen has a connected wrapper (calls `hiltViewModel()`) and a stateless `*Content` composable (takes state + callbacks). The `*Content` versions are what Paparazzi renders. Example: `FeedScreen` → `FeedScreenContent`.
 
-**CI**: `.github/workflows/ci.yml` runs four parallel jobs on every PR: lint, unit tests, screenshot verification, and release APK build.
+**CI**: `.github/workflows/ci.yml` runs lint, unit tests and screenshot verification on every push and PR. On `main` it then publishes the signed release (see Releases above).
 
 **Test fakes** (in `app/src/test/.../testutil/`):
 - `FakeFatebookApi` — implements `FatebookApi` interface, records calls
@@ -143,6 +147,6 @@ dev.russell.fatebook/
 - **Offline-first reads + writes**: Room cache shows questions immediately on launch; every mutation (create, forecast, resolve, edit, delete, visibility, comment) applies to Room synchronously and is queued in `pending_mutations` for background sync. `OfflineBanner` ("You're offline. Changes will sync when you reconnect.") appears above the feed when `NetworkMonitor.isOnline` reports false. `SyncIssuesBanner` shows the count of mutations that exhausted retries; tapping "View" opens `SyncErrorsSheet` with per-row Retry/Discard.
 - **Theming**: Fixed Ledger palette in light and dark, following the system setting. `themes.xml` window background matches the paper colour to avoid a launch flash.
 - **Navigation gate**: `startDestination = if (hasApiKey) FEED else ONBOARDING` (sync read, no flash; users upgrading with a key never see onboarding). `hasApiKeyFlow` is observed so a key cleared at runtime drops back to onboarding. Settings remains the place to change an existing key (its back arrow is hidden when keyless).
-- **ProGuard/R8**: Release builds use minification, resource shrinking, and targeted keep rules. Release buildType uses debug signing config as fallback for CI builds.
+- **ProGuard/R8**: Release builds use minification, resource shrinking, and targeted keep rules. Release buildType falls back to the debug signing config when `keystore.properties` is absent; CI writes one from repo secrets.
 - **Rows**: overdue and due-today date lines use the accent colour (overdue adds a clock icon); resolved rows show an `OutcomeStamp` and the actual `resolvedAt` day (falling back to the deadline).
 - **Accessibility**: ProbabilitySlider has semantics for screen readers. `ForecastSparkline` carries a text description. Calibration and activity charts provide text summaries via `Modifier.semantics`. Feed empty state on Active filter shows "No predictions yet / Tap + to create your first prediction".

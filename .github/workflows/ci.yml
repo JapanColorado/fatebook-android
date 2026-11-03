@@ -1,88 +1,100 @@
+# Every push to main that passes the checks publishes a signed APK as a GitHub release, which
+# Obtainium on the phone installs as an update. PRs and docs-only pushes just run the checks.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'fastlane/**', '.claude/**', 'LICENSE']
   pull_request:
-    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'fastlane/**', '.claude/**', 'LICENSE']
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a main run halfway through publishing a release.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  APP: fatebook
+  # SHA-256 of the signing certificate on the installed app. A mismatch means the phone
+  # would reject the update, so the release step refuses to publish.
+  EXPECTED_CERT_SHA256: d7f4bc7b1ac1c17cfb0e560b4ba87ad858436af6de60f1b034b93ce4e7ac5ed7
 
 jobs:
-  lint:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # versionCode is the commit count
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Run lint
-        run: ./gradlew lintDebug
-      - name: Upload lint report
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: android-actions/setup-android@v4
         with:
-          name: lint-report
-          path: app/build/reports/lint-results-debug.html
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v6
 
-  unit-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unit-test-results
-          path: app/build/reports/tests/testDebugUnitTest/
+      - name: Checks
+        run: ./gradlew lintDebug testDebugUnitTest verifyPaparazziDebug --continue
 
-  screenshot-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Verify screenshots
-        run: ./gradlew verifyPaparazziDebug
-      - name: Upload screenshot failures
+      - name: Upload reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: screenshot-failures
-          path: app/build/paparazzi/failures/
+          name: reports
+          path: |
+            app/build/reports/
+            app/build/paparazzi/failures/
+          if-no-files-found: ignore
 
-  build-release:
-    runs-on: ubuntu-latest
-    needs: [lint, unit-tests]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Write signing config
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Signing secrets are missing; refusing to publish an APK the phone can't update to"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
       - name: Build release APK
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: ./gradlew assembleRelease
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: app/build/outputs/apk/release/
+
+      - name: Publish release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bt="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)"
+          apk="$(ls app/build/outputs/apk/release/*.apk | head -n1)"
+          digest="$("$bt/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          if [ "$digest" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::APK is signed with $digest, expected $EXPECTED_CERT_SHA256"
+            exit 1
+          fi
+          version="$("$bt/aapt2" dump badging "$apk" | sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p")"
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; nothing to publish"
+            exit 0
+          fi
+          out="$RUNNER_TEMP/$APP-$version.apk"
+          cp "$apk" "$out"
+          gh release create "$tag" "$out" --target "$GITHUB_SHA" --title "$APP $version" --generate-notes
+          echo "Published $tag" >> "$GITHUB_STEP_SUMMARY"

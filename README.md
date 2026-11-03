@@ -34,10 +34,9 @@ An unofficial Android client for [Fatebook](https://fatebook.io), the prediction
 
 ## Install
 
-1. Download the latest APK from [GitHub Releases](https://github.com/JapanColorado/fatebook-android/releases/latest)
-2. Open the APK on your Android device to install
-3. Get your API key at [fatebook.io/api-setup](https://fatebook.io/api-setup)
-4. Open the app → Settings → paste the key → Save & Connect
+1. Add `https://github.com/JapanColorado/fatebook-android` in [Obtainium](https://github.com/ImranR98/Obtainium) to install it and get updates automatically (every push to `main` that passes CI publishes a signed release), or download the APK from [GitHub Releases](https://github.com/JapanColorado/fatebook-android/releases/latest) and open it on your device
+2. Get your API key at [fatebook.io/api-setup](https://fatebook.io/api-setup)
+3. Open the app → Settings → paste the key → Save & Connect
 
 ## Building
 

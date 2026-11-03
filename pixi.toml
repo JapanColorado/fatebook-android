@@ -29,6 +29,7 @@ test-screenshot-record = { cmd = "./gradlew recordPaparazziDebug", description =
 test-screenshot-verify = { cmd = "./gradlew verifyPaparazziDebug", description = "Compare against Paparazzi golden images" }
 test-all = { cmd = "./gradlew testDebugUnitTest verifyPaparazziDebug", description = "Unit tests + screenshot verify" }
 lint = { cmd = "./gradlew lintDebug", description = "Run Android lint on the debug variant" }
+check = { cmd = "./gradlew lintDebug testDebugUnitTest verifyPaparazziDebug --continue", description = "Everything CI checks before a release (lint + unit + screenshot tests)" }
 
 # Device inspection
 logs = { cmd = "adb logcat --pid=$(adb shell pidof -s dev.russell.fatebook)", description = "Logcat for the running release app" }

@@ -81,9 +81,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bt="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)"
-          apk="$(ls app/build/outputs/apk/release/*.apk | head -n1)"
-          digest="$("$bt/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          # Newest build-tools that actually ships apksigner (preview dirs may not).
+          bt="$(for d in $(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V); do [ -x "$d/apksigner" ] && echo "${d%/}"; done | tail -n1)"
+          apk="app/build/outputs/apk/release/app-release.apk"
+          echo "build-tools: $bt, APK: $apk"
+          certs="$("$bt/apksigner" verify --print-certs "$apk" 2>&1)" || { echo "$certs"; exit 1; }
+          echo "$certs" | grep -v '^WARNING'
+          digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$certs" | head -n1)"
           if [ "$digest" != "$EXPECTED_CERT_SHA256" ]; then
             echo "::error::APK is signed with $digest, expected $EXPECTED_CERT_SHA256"
             exit 1

@@ -87,7 +87,9 @@ jobs:
           echo "build-tools: $bt, APK: $apk"
           certs="$("$bt/apksigner" verify --print-certs "$apk" 2>&1)" || { echo "$certs"; exit 1; }
           echo "$certs" | grep -v '^WARNING'
-          digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$certs" | head -n1)"
+          # Output format varies by build-tools ("Signer #1 certificate ..." vs "V2 Signer: certificate ...");
+          # every signer listed must be the expected one.
+          digest="$(grep -oE 'certificate SHA-256 digest: [0-9a-f]{64}' <<<"$certs" | awk '{print $NF}' | sort -u)"
           if [ "$digest" != "$EXPECTED_CERT_SHA256" ]; then
             echo "::error::APK is signed with $digest, expected $EXPECTED_CERT_SHA256"
             exit 1

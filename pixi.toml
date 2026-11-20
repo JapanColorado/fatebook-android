@@ -11,7 +11,7 @@ gradle = ">=8.11"
 openjdk = "21.*"
 
 [activation.env]
-ANDROID_HOME = "/home/russell/Android/Sdk"
+ANDROID_HOME = "$HOME/Android/Sdk"
 
 [tasks]
 # Build / install / run: release is the default, -debug variants use the .debug appId.

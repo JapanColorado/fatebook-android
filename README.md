@@ -85,6 +85,15 @@ Fatebook REST API → FatebookApi (Retrofit) → QuestionRepository → Room DB
 
 Kotlin, Jetpack Compose, Hilt, Retrofit + Moshi, Room, WorkManager, DataStore, EncryptedSharedPreferences
 
+## Elsewhere
+
+- Announced on the EA Forum and LessWrong: [New (Unofficial) Fatebook Android App](https://forum.effectivealtruism.org/posts/8t363y2uXe4sEXacM/new-unofficial-fatebook-android-app).
+- The app's icon is in the [Arcticons](https://github.com/Arcticons-Team/Arcticons) icon pack ([PR #3379](https://github.com/Arcticons-Team/Arcticons/pull/3379)).
+
+## How this was built
+
+Built with [Claude Code](https://claude.com/claude-code), and most commits say so. I decide what to make, write the specification, review the changes and use the result every day.
+
 ## License
 
-Personal project. Not affiliated with Fatebook/Sage.
+[MIT](LICENSE). A personal project, not affiliated with Fatebook/Sage.
